@@ -232,6 +232,69 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* --- semantic summary (card body) --- */
+.semantic-summary {
+  padding: 10px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+}
+.semantic-mission {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.semantic-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.semantic-current {
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+.todo-bar {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  background: #10151d;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.todo-bar-fill { position: absolute; inset: 0 auto 0 0; background: #2f5d46; }
+.todo-count { color: var(--text-dim); flex-shrink: 0; }
+.todo-list { margin: 0; padding: 0 0 0 6px; list-style: none; color: var(--text-dim); max-height: 180px; overflow-y: auto; }
+.todo-list li { padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.todo-completed { opacity: 0.55; }
+.todo-in_progress { color: var(--text); }
+.semantic-health { display: flex; gap: 10px; }
+.health-badge { color: var(--waiting); opacity: 0.85; font-size: 11px; }
+.semantic-waiting { color: var(--waiting); }
+.waiting-question { font-style: italic; }
+.waiting-duration { color: var(--text-dim); }
+
+.graph-expander {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px dashed var(--border);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.graph-expander:hover { color: var(--text); }
+
 /* --- global timeline view --- */
 .view-mode-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .view-mode-toggle button {

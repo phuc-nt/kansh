@@ -6,6 +6,7 @@ import type { NormalizedEvent, SessionSnapshot } from '../../shared/normalized-e
 import { contextLimitForModel, shortModelName } from '../../shared/model-context-limits';
 import { GitGraphSvg } from './git-graph-svg';
 import { ActivitySparkline } from './activity-sparkline';
+import { SessionSemanticSummary } from './session-semantic-summary';
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -53,6 +54,23 @@ export const SessionLaneCard = memo(function SessionLaneCard({
   // ended sessions start collapsed (header only); click header to expand
   const [collapsed, setCollapsed] = useState(session.status === 'ended');
   const [toast, setToast] = useState<string | null>(null);
+  // semantic-first: the git-graph lives behind an expander, remembered per session
+  const graphOpenKey = `kansh-graph-open:${session.sessionId}`;
+  const [graphOpen, setGraphOpen] = useState(() => localStorage.getItem(graphOpenKey) === '1');
+  const toggleGraph = () => {
+    setGraphOpen((open) => {
+      localStorage.setItem(graphOpenKey, open ? '0' : '1');
+      return !open;
+    });
+  };
+  // minute ticker: waiting-duration text only needs minute granularity
+  const [nowMinuteMs, setNowMinuteMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (session.status !== 'waiting') return;
+    const timer = setInterval(() => setNowMinuteMs(Date.now()), 60_000);
+    setNowMinuteMs(Date.now());
+    return () => clearInterval(timer);
+  }, [session.status]);
   // condensed segments the user expanded back into full nodes
   const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
   const toggleSegment = (uuid: string) =>
@@ -114,7 +132,7 @@ export const SessionLaneCard = memo(function SessionLaneCard({
       el.scrollTop = el.scrollHeight;
       programmaticTop.current = el.scrollTop;
     }
-  }, [session.events, following, collapsed]);
+  }, [session.events, following, collapsed, graphOpen]);
 
   // Pending tools drive the live elapsed ticker: re-render this card each
   // second ONLY while at least one tool-start lacks its tool-end.
@@ -195,28 +213,36 @@ export const SessionLaneCard = memo(function SessionLaneCard({
       {toast ? <div className="jump-toast">{toast}</div> : null}
       {collapsed ? null : (
         <>
-          <div
-            className="graph-viewport"
-            ref={viewportRef}
-            onScroll={onScroll}
-            onWheel={onWheel}
-            onTouchMove={onTouchMove}
-          >
-            <GitGraphSvg
-              events={session.events}
-              status={session.status}
-              onSelectEvent={onSelectEvent}
-              expandedSegments={expandedSegments}
-              onToggleSegment={toggleSegment}
-              pendingToolUuids={pendingToolUuids}
-              renderTick={tick}
-            />
-          </div>
-          {following ? null : (
-            <button className="jump-latest" onClick={() => setFollowing(true)}>
-              ↓ latest
-            </button>
-          )}
+          <SessionSemanticSummary session={session} nowMinuteMs={nowMinuteMs} />
+          <button className="graph-expander" onClick={toggleGraph}>
+            {graphOpen ? '▴ ẩn graph chi tiết' : '▾ xem graph chi tiết'}
+          </button>
+          {graphOpen ? (
+            <>
+              <div
+                className="graph-viewport"
+                ref={viewportRef}
+                onScroll={onScroll}
+                onWheel={onWheel}
+                onTouchMove={onTouchMove}
+              >
+                <GitGraphSvg
+                  events={session.events}
+                  status={session.status}
+                  onSelectEvent={onSelectEvent}
+                  expandedSegments={expandedSegments}
+                  onToggleSegment={toggleSegment}
+                  pendingToolUuids={pendingToolUuids}
+                  renderTick={tick}
+                />
+              </div>
+              {following ? null : (
+                <button className="jump-latest" onClick={() => setFollowing(true)}>
+                  ↓ latest
+                </button>
+              )}
+            </>
+          ) : null}
         </>
       )}
     </div>
