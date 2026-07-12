@@ -31,6 +31,8 @@ export interface NormalizedEvent {
   toolUseId?: string;
   /** subagent type from meta.json (e.g. "code-reviewer") */
   agentType?: string;
+  /** nesting level from meta.json (1 = spawned by main agent) */
+  spawnDepth?: number;
   /** short human-readable text: truncated prompt, tool target, description */
   label?: string;
   /** token usage of the assistant turn this event came from (assistant records only) */
