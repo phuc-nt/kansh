@@ -31,6 +31,10 @@ export interface SessionMetaFields {
   slug?: string;
   entrypoint?: string;
   version?: string;
+  /** Claude Code's generated session title (latest wins) */
+  aiTitle?: string;
+  /** user-set session title (latest wins, beats aiTitle) */
+  customTitle?: string;
 }
 
 function truncate(text: string): string {
@@ -80,7 +84,31 @@ export function extractSessionMeta(record: unknown): SessionMetaFields {
   if (typeof record.slug === 'string') meta.slug = record.slug;
   if (typeof record.entrypoint === 'string') meta.entrypoint = record.entrypoint;
   if (typeof record.version === 'string') meta.version = record.version;
+  if (record.type === 'ai-title' && typeof record.aiTitle === 'string') meta.aiTitle = record.aiTitle;
+  if (record.type === 'custom-title' && typeof record.customTitle === 'string') {
+    meta.customTitle = record.customTitle;
+  }
   return meta;
+}
+
+/**
+ * Classify the record-level toolUseResult into a file touch.
+ * Two shapes observed in real transcripts (format is not public — skip unknowns):
+ *   write tools: `{filePath, type: 'create'|'update'}` or `{filePath, oldString, ...}` (Edit)
+ *   Read:        `{file: {filePath, ...}}`
+ */
+function parseFileTouch(result: unknown): { path: string; action: 'edit' | 'read' } | undefined {
+  if (!isRecord(result)) return undefined;
+  if (
+    typeof result.filePath === 'string' &&
+    (result.type === 'create' || result.type === 'update' || 'oldString' in result)
+  ) {
+    return { path: result.filePath, action: 'edit' };
+  }
+  if (isRecord(result.file) && typeof result.file.filePath === 'string') {
+    return { path: result.file.filePath, action: 'read' };
+  }
+  return undefined;
 }
 
 export function parseTranscriptRecord(record: unknown, ctx: ParseContext): ParsedEvent[] {
@@ -100,6 +128,19 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
     if (Array.isArray(content)) {
       const events: ParsedEvent[] = [];
       let userText = '';
+      // record-level enrichments apply to this record's tool_result (one per record)
+      const fileTouch = parseFileTouch(record.toolUseResult);
+      const blocked =
+        typeof record.toolDenialKind === 'string'
+          ? {
+              kind: record.toolDenialKind,
+              reason:
+                typeof record.toolUseResult === 'string'
+                  ? truncate(record.toolUseResult)
+                  : undefined,
+            }
+          : undefined;
+      let firstToolEnd = true;
       for (const block of content) {
         if (!isRecord(block)) continue;
         if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
@@ -109,7 +150,10 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
             kind: 'tool-end',
             toolUseId: block.tool_use_id,
             isError: block.is_error === true || undefined,
+            fileTouch: firstToolEnd ? fileTouch : undefined,
+            blocked: firstToolEnd ? blocked : undefined,
           });
+          firstToolEnd = false;
         } else if (block.type === 'text' && typeof block.text === 'string') {
           userText += block.text;
         }
@@ -144,6 +188,7 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
       };
     }
     if (typeof message?.model === 'string') turnInfo.model = message.model;
+    const skill = typeof record.attributionSkill === 'string' ? record.attributionSkill : undefined;
     let assistantText = '';
     for (const block of content) {
       if (!isRecord(block)) continue;
@@ -155,6 +200,7 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
           kind: 'tool-start',
           toolName,
           toolUseId: block.id,
+          skill,
           label: toolInputLabel(block.input),
           // semantic payloads: task list / pending question ride the event
           todos: toolName === 'TodoWrite' ? parseTodosInput(block.input) : undefined,
@@ -179,6 +225,29 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
       }
     }
     return events;
+  }
+
+  // system records: hooks that actually blocked continuation surface as friction
+  if (record.type === 'system') {
+    const hookErrors = Array.isArray(record.hookErrors) ? record.hookErrors : [];
+    if (record.preventedContinuation === true || hookErrors.length > 0) {
+      const reason =
+        typeof record.stopReason === 'string' && record.stopReason
+          ? record.stopReason
+          : typeof hookErrors[0] === 'string'
+            ? hookErrors[0]
+            : undefined;
+      return [
+        {
+          ...base,
+          uuid,
+          kind: 'assistant-message',
+          label: truncate(`⛔ hook chặn${reason ? `: ${reason}` : ''}`),
+          blocked: { kind: 'hook-block', reason: reason ? truncate(reason) : undefined },
+        },
+      ];
+    }
+    return [];
   }
 
   // queue-operation, attachment, summary, hooks, unknown future types: ignored.

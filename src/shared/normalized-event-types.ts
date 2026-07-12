@@ -45,6 +45,27 @@ export interface NormalizedEvent {
   todos?: TodoItem[];
   /** AskUserQuestion tool-start only: first question's text */
   question?: string;
+  /** skill this tool call was attributed to (record.attributionSkill) */
+  skill?: string;
+  /** the tool was blocked (permission denial or hook prevention) */
+  blocked?: { kind: string; reason?: string };
+  /** file this tool touched (from toolUseResult; edit = write tools, read = Read) */
+  fileTouch?: { path: string; action: 'edit' | 'read' };
+}
+
+/** Per-session aggregate of file activity (capped). */
+export interface FileTouch {
+  path: string;
+  edits: number;
+  reads: number;
+  /** epoch ms of the latest edit (undefined if only reads) */
+  lastEditMs?: number;
+}
+
+/** Two live sessions edited the same file recently. */
+export interface FileConflict {
+  path: string;
+  otherSessionIds: string[];
 }
 
 export interface TodoItem {
@@ -89,6 +110,16 @@ export interface SessionSummary {
   errorStreak: number;
   /** repeated identical tool signature detected recently (possible stuck loop) */
   loopSuspect?: string;
+  /** Claude Code's own session title (custom > ai-generated; undefined → fall back to project) */
+  title?: string;
+  /** files touched in the observed window, capped, sorted by activity */
+  filesTouched?: FileTouch[];
+  /** files also being edited by other LIVE sessions right now */
+  conflicts?: FileConflict[];
+  /** skill attributed to recent tool activity on the main lane */
+  currentSkill?: string;
+  /** count of blocked tools (permission denials / hook preventions) */
+  blockedCount: number;
 }
 
 export interface SessionSnapshot extends SessionSummary {
@@ -115,4 +146,9 @@ export type ServerMessage =
       pendingQuestion?: string;
       errorStreak: number;
       loopSuspect?: string;
+      title?: string;
+      filesTouched?: FileTouch[];
+      conflicts?: FileConflict[];
+      currentSkill?: string;
+      blockedCount: number;
     };

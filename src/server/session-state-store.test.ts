@@ -123,3 +123,115 @@ describe('semantic layer', () => {
     expect(semantics).toHaveLength(1);
   });
 });
+
+describe('provenance layer', () => {
+  test('title: latest wins, custom beats ai', () => {
+    const { store } = makeStore();
+    store.applyMeta(SID, { aiTitle: 'First generated title' });
+    expect(store.snapshotAll()[0].title).toBe('First generated title');
+    store.applyMeta(SID, { aiTitle: 'Regenerated title' });
+    expect(store.snapshotAll()[0].title).toBe('Regenerated title');
+    store.applyMeta(SID, { customTitle: 'kansh' });
+    expect(store.snapshotAll()[0].title).toBe('kansh');
+    store.applyMeta(SID, { aiTitle: 'Later regeneration' }); // custom still wins
+    expect(store.snapshotAll()[0].title).toBe('kansh');
+  });
+
+  test('filesTouched aggregates edits/reads per path, hottest first, capped at 50', () => {
+    const { store } = makeStore();
+    store.applyEvents(SID, [
+      ev('tool-end', { toolUseId: 'e1', fileTouch: { path: '/p/hot.ts', action: 'edit' } }),
+      ev('tool-end', { toolUseId: 'e2', fileTouch: { path: '/p/hot.ts', action: 'edit' } }),
+      ev('tool-end', { toolUseId: 'e3', fileTouch: { path: '/p/hot.ts', action: 'read' } }),
+      ev('tool-end', { toolUseId: 'e4', fileTouch: { path: '/p/cold.ts', action: 'read' } }),
+    ]);
+    const files = store.snapshotAll()[0].filesTouched;
+    expect(files?.[0]).toMatchObject({ path: '/p/hot.ts', edits: 2, reads: 1 });
+    expect(files?.[0].lastEditMs).toBeGreaterThan(0);
+    expect(files?.[1]).toMatchObject({ path: '/p/cold.ts', edits: 0, reads: 1 });
+    // cap: 60 distinct paths → 50 kept
+    store.applyEvents(
+      SID,
+      Array.from({ length: 60 }, (_, i) =>
+        ev('tool-end', { toolUseId: `c${i}`, fileTouch: { path: `/p/f${i}.ts`, action: 'read' } }),
+      ),
+    );
+    expect(store.snapshotAll()[0].filesTouched?.length).toBe(50);
+  });
+
+  test('currentSkill set by attributed tool, expires after 10 unattributed tools', () => {
+    const { store } = makeStore();
+    store.applyEvents(SID, [ev('tool-start', { toolName: 'Edit', toolUseId: 'k1', skill: 'cook' })]);
+    expect(store.snapshotAll()[0].currentSkill).toBe('cook');
+    store.applyEvents(
+      SID,
+      Array.from({ length: 9 }, (_, i) => ev('tool-start', { toolName: 'Read', toolUseId: `k${i + 2}` })),
+    );
+    expect(store.snapshotAll()[0].currentSkill).toBe('cook');
+    store.applyEvents(SID, [ev('tool-start', { toolName: 'Read', toolUseId: 'k99' })]);
+    expect(store.snapshotAll()[0].currentSkill).toBeUndefined();
+  });
+
+  test('blockedCount counts blocked events', () => {
+    const { store } = makeStore();
+    store.applyEvents(SID, [
+      ev('tool-end', { toolUseId: 'b1', blocked: { kind: 'permission-rule' } }),
+      ev('assistant-message', { blocked: { kind: 'hook-block', reason: 'tests failed' } }),
+    ]);
+    expect(store.snapshotAll()[0].blockedCount).toBe(2);
+  });
+});
+
+describe('cross-session edit conflicts', () => {
+  const SID2 = 'ffffffff-1111-2222-3333-444444444444';
+  // anchored to real now: addSession seeds lastAppendMs with Date.now(), and
+  // the ended-session branch needs nowMs to be genuinely later than that
+  const NOW = Date.now();
+  const liveBoth = { resumedSessionIds: new Set([SID, SID2]), freshProcessCwds: new Set<string>(), claudeProcessCount: 2 };
+
+  function makeTwo() {
+    const { store, semantics } = makeStore();
+    store.addSession(SID2, 'proj2', Date.now(), true);
+    return { store, semantics };
+  }
+
+  test('two live sessions editing the same file within the window conflict; ended sessions do not', () => {
+    const { store } = makeTwo();
+    const touch = (sid: string, uid: string) => {
+      store.applyEvents(sid, [
+        { sessionId: sid, agentId: null, ts: new Date(NOW - 60_000).toISOString(), uuid: uid, kind: 'tool-end', toolUseId: uid, fileTouch: { path: '/shared/config.ts', action: 'edit' } },
+      ]);
+    };
+    touch(SID, 'x1');
+    touch(SID2, 'x2');
+    store.applyLivenessSample(liveBoth, NOW);
+    const snaps = store.snapshotAll();
+    for (const sid of [SID, SID2]) {
+      const snap = snaps.find((s) => s.sessionId === sid);
+      expect(snap?.conflicts?.[0].path).toBe('/shared/config.ts');
+      expect(snap?.conflicts?.[0].otherSessionIds).toEqual([sid === SID ? SID2 : SID]);
+    }
+    // one session ends → conflict clears on both
+    store.applyLivenessSample(
+      { resumedSessionIds: new Set([SID]), freshProcessCwds: new Set<string>(), claudeProcessCount: 1 },
+      NOW + 20_000,
+    );
+    for (const snap of store.snapshotAll()) expect(snap.conflicts).toBeUndefined();
+  });
+
+  test('edits older than 30min do not conflict; reads never conflict', () => {
+    const { store } = makeTwo();
+    store.applyEvents(SID, [
+      { sessionId: SID, agentId: null, ts: new Date(NOW - 45 * 60_000).toISOString(), uuid: 'o1', kind: 'tool-end', toolUseId: 'o1', fileTouch: { path: '/shared/old.ts', action: 'edit' } },
+    ]);
+    store.applyEvents(SID2, [
+      { sessionId: SID2, agentId: null, ts: new Date(NOW - 60_000).toISOString(), uuid: 'o2', kind: 'tool-end', toolUseId: 'o2', fileTouch: { path: '/shared/old.ts', action: 'edit' } },
+      { sessionId: SID2, agentId: null, ts: new Date(NOW - 30_000).toISOString(), uuid: 'o3', kind: 'tool-end', toolUseId: 'o3', fileTouch: { path: '/shared/readme.md', action: 'read' } },
+    ]);
+    store.applyEvents(SID, [
+      { sessionId: SID, agentId: null, ts: new Date(NOW - 20_000).toISOString(), uuid: 'o4', kind: 'tool-end', toolUseId: 'o4', fileTouch: { path: '/shared/readme.md', action: 'read' } },
+    ]);
+    store.applyLivenessSample(liveBoth, NOW);
+    for (const snap of store.snapshotAll()) expect(snap.conflicts).toBeUndefined();
+  });
+});

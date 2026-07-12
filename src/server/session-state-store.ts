@@ -4,6 +4,8 @@
 // evictSessionsOlderThan), keeping memory bounded.
 
 import type {
+  FileConflict,
+  FileTouch,
   NormalizedEvent,
   SessionSnapshot,
   SessionStatus,
@@ -50,6 +52,18 @@ interface SessionState {
   recentToolSignatures: string[];
   /** last broadcast semantics fingerprint (change detection) */
   lastSemanticsKey?: string;
+  // --- provenance layer ---
+  /** Claude Code's generated title (latest wins) */
+  aiTitle?: string;
+  /** user-set title (latest wins, beats aiTitle) */
+  customTitle?: string;
+  /** path → activity counters, capped at MAX_FILES_TOUCHED */
+  filesTouched: Map<string, FileTouch>;
+  conflicts?: FileConflict[];
+  currentSkill?: string;
+  /** main-lane tool-starts without a skill remaining before currentSkill expires */
+  skillTtl: number;
+  blockedCount: number;
 }
 
 export interface StoreListeners {
@@ -69,6 +83,11 @@ export interface StoreListeners {
       pendingQuestion?: string;
       errorStreak: number;
       loopSuspect?: string;
+      title?: string;
+      filesTouched?: FileTouch[];
+      conflicts?: FileConflict[];
+      currentSkill?: string;
+      blockedCount: number;
     },
   ) => void;
 }
@@ -106,18 +125,27 @@ export class SessionStateStore {
       contextTokens: 0,
       errorStreak: 0,
       recentToolSignatures: [],
+      filesTouched: new Map(),
+      skillTtl: 0,
+      blockedCount: 0,
     };
     this.sessions.set(sessionId, state);
     if (!quiet) this.listeners.onSessionAdded(this.toSnapshot(state));
   }
 
-  /** Merge metadata fields scraped from transcript records (first-wins). */
+  /** Merge metadata fields scraped from transcript records (first-wins; titles latest-wins). */
   applyMeta(sessionId: string, meta: SessionMetaFields): void {
     const state = this.sessions.get(sessionId);
     if (!state) return;
     if (meta.cwd && !state.cwd) state.cwd = meta.cwd;
     if (meta.slug && !state.slug) state.slug = meta.slug;
     if (meta.entrypoint && !state.entrypoint) state.entrypoint = meta.entrypoint;
+    // titles are re-generated over a session's life — the newest one wins.
+    // Title records carry no events, so broadcast from here or they'd wait
+    // for the next unrelated event to surface.
+    if (meta.aiTitle) state.aiTitle = meta.aiTitle;
+    if (meta.customTitle) state.customTitle = meta.customTitle;
+    if (meta.aiTitle || meta.customTitle) this.emitSemanticsIfChanged(state, false);
   }
 
   /** Assign seq numbers and append; broadcasts unless quiet (startup replay). */
@@ -157,6 +185,66 @@ export class SessionStateStore {
   /** consecutive tool signatures within this window flag a possible loop */
   private static readonly LOOP_RING = 15;
   private static readonly LOOP_MIN_REPEATS = 3;
+  /** unattributed main-lane tool-starts before currentSkill expires */
+  private static readonly SKILL_TTL = 10;
+  /** per-session cap on tracked file paths */
+  private static readonly MAX_FILES_TOUCHED = 50;
+  /** edits by two live sessions within this window of now = conflict */
+  private static readonly CONFLICT_WINDOW_MS = 30 * 60_000;
+
+  /** cross-session edit index: path → sessionId → last edit epoch ms */
+  private editIndex = new Map<string, Map<string, number>>();
+
+  /** Record an edit in the cross-session index and refresh conflicts for that path. */
+  private noteEdit(path: string, sessionId: string, ms: number): void {
+    let byPath = this.editIndex.get(path);
+    if (!byPath) this.editIndex.set(path, (byPath = new Map()));
+    byPath.set(sessionId, Math.max(byPath.get(sessionId) ?? 0, ms));
+    if (byPath.size >= 2) this.recomputeConflicts();
+  }
+
+  /**
+   * Rebuild conflicts for all sessions: a path counts when ≥2 LIVE sessions
+   * edited it within the recent window. Sessions whose conflict list changed
+   * get a semantics broadcast. Cheap: editIndex only holds multi-writer paths
+   * after pruning, and sessions are few.
+   */
+  recomputeConflicts(nowMs = Date.now()): void {
+    const fresh = new Map<string, FileConflict[]>();
+    for (const [path, byPath] of this.editIndex) {
+      const liveRecent: string[] = [];
+      for (const [sessionId, ms] of byPath) {
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+          byPath.delete(sessionId); // evicted session — prune the index
+          continue;
+        }
+        if (session.status !== 'ended' && nowMs - ms <= SessionStateStore.CONFLICT_WINDOW_MS) {
+          liveRecent.push(sessionId);
+        }
+      }
+      if (byPath.size === 0) {
+        this.editIndex.delete(path);
+        continue;
+      }
+      if (liveRecent.length < 2) continue;
+      for (const sessionId of liveRecent) {
+        const others = liveRecent.filter((id) => id !== sessionId);
+        let list = fresh.get(sessionId);
+        if (!list) fresh.set(sessionId, (list = []));
+        list.push({ path, otherSessionIds: others });
+      }
+    }
+    for (const state of this.sessions.values()) {
+      const next = fresh.get(state.sessionId);
+      const changed =
+        JSON.stringify(next ?? null) !== JSON.stringify(state.conflicts ?? null);
+      if (changed) {
+        state.conflicts = next;
+        this.emitSemanticsIfChanged(state, false);
+      }
+    }
+  }
 
   /** Semantic-layer rules; see contract docs for field meanings. */
   private applySemantics(state: SessionState, event: NormalizedEvent): void {
@@ -216,6 +304,58 @@ export class SessionStateStore {
         }
       }
     }
+
+    // current skill: latest attributed main-lane tool; expires after a run of
+    // unattributed tools so a stale badge doesn't outlive the skill
+    if (isMain && event.kind === 'tool-start') {
+      if (event.skill) {
+        state.currentSkill = event.skill;
+        state.skillTtl = SessionStateStore.SKILL_TTL;
+      } else if (state.currentSkill && --state.skillTtl <= 0) {
+        state.currentSkill = undefined;
+      }
+    }
+
+    // friction: blocked tools (permission denials, hook preventions)
+    if (event.blocked) state.blockedCount += 1;
+
+    // file activity: aggregate per path, capped
+    if (event.fileTouch) this.applyFileTouch(state, event.fileTouch, event.ts);
+  }
+
+  private applyFileTouch(
+    state: SessionState,
+    touch: { path: string; action: 'edit' | 'read' },
+    ts: string,
+  ): void {
+    let entry = state.filesTouched.get(touch.path);
+    if (!entry) {
+      if (state.filesTouched.size >= SessionStateStore.MAX_FILES_TOUCHED) {
+        // evict the least-active path to stay bounded
+        let coldest: string | undefined;
+        let coldestScore = Infinity;
+        for (const [path, ft] of state.filesTouched) {
+          const score = ft.edits + ft.reads;
+          if (score < coldestScore) {
+            coldestScore = score;
+            coldest = path;
+          }
+        }
+        if (coldest !== undefined) state.filesTouched.delete(coldest);
+      }
+      entry = { path: touch.path, edits: 0, reads: 0 };
+      state.filesTouched.set(touch.path, entry);
+    }
+    if (touch.action === 'edit') {
+      entry.edits += 1;
+      const ms = Date.parse(ts);
+      if (!Number.isNaN(ms)) {
+        entry.lastEditMs = Math.max(entry.lastEditMs ?? 0, ms);
+        this.noteEdit(touch.path, state.sessionId, entry.lastEditMs);
+      }
+    } else {
+      entry.reads += 1;
+    }
   }
 
   /** Broadcast semantics only when the fingerprint actually changed. */
@@ -226,6 +366,11 @@ export class SessionStateStore {
       state.errorStreak,
       state.loopSuspect,
       state.todos?.map((t) => `${t.status}${t.content}`).join('\u0000'),
+      state.customTitle ?? state.aiTitle,
+      state.currentSkill,
+      state.blockedCount,
+      [...state.filesTouched.values()].map((ft) => `${ft.path}:${ft.edits}.${ft.reads}`).join(','),
+      JSON.stringify(state.conflicts ?? null),
     ].join('\u0000');
     if (key === state.lastSemanticsKey) return;
     state.lastSemanticsKey = key;
@@ -236,7 +381,20 @@ export class SessionStateStore {
       pendingQuestion: state.pendingQuestion,
       errorStreak: state.errorStreak,
       loopSuspect: state.loopSuspect,
+      title: state.customTitle ?? state.aiTitle,
+      filesTouched: this.filesTouchedList(state),
+      conflicts: state.conflicts,
+      currentSkill: state.currentSkill,
+      blockedCount: state.blockedCount,
     });
+  }
+
+  /** filesTouched map to capped array sorted by activity (hottest first). */
+  private filesTouchedList(state: SessionState): FileTouch[] | undefined {
+    if (state.filesTouched.size === 0) return undefined;
+    return [...state.filesTouched.values()]
+      .sort((a, b) => b.edits + b.reads - (a.edits + a.reads))
+      .map((ft) => ({ ...ft }));
   }
 
   /** Called when the transcript file receives an append (regardless of parse results). */
@@ -288,6 +446,9 @@ export class SessionStateStore {
         this.listeners.onStatusChange(state.sessionId, next, state.lastActivityAt, state.waitingReason);
       }
     }
+    // liveness changes conflict eligibility (live-only) and time moves the
+    // 30min window, so refresh alongside each sample
+    this.recomputeConflicts(nowMs);
   }
 
   /**
@@ -330,8 +491,17 @@ export class SessionStateStore {
       loopSuspectSignature,
       recentToolSignatures,
       lastSemanticsKey,
+      aiTitle,
+      customTitle,
+      filesTouched,
+      skillTtl,
       ...rest
     } = state;
-    return { ...rest, events: [...state.events] };
+    return {
+      ...rest,
+      title: customTitle ?? aiTitle,
+      filesTouched: this.filesTouchedList(state),
+      events: [...state.events],
+    };
   }
 }

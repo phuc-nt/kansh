@@ -23,6 +23,7 @@ const session = (extra: Partial<SessionSnapshot>): SessionSnapshot => ({
   totalTokensCacheRead: 0,
   contextTokens: 0,
   errorStreak: 0,
+  blockedCount: 0,
   events: [],
   ...extra,
 });

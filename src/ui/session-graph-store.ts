@@ -70,6 +70,11 @@ export class SessionGraphStore {
                   pendingQuestion: message.pendingQuestion,
                   errorStreak: message.errorStreak,
                   loopSuspect: message.loopSuspect,
+                  title: message.title,
+                  filesTouched: message.filesTouched,
+                  conflicts: message.conflicts,
+                  currentSkill: message.currentSkill,
+                  blockedCount: message.blockedCount,
                 }
               : s,
           ),
