@@ -24,6 +24,7 @@ Dev mode (UI hot-reload): `bun run start` in one terminal, `bun run dev` in anot
 - Click any node → side panel with the full transcript record (truncated, lazily re-read from disk); spawn nodes show the sub-agent's meta + opening prompt.
 - Filter bar: hide ended, filter by project.
 - `↗` button: focus the session's window — VSCode workspace via `code <cwd>`, CLI via terminal-app activation, ended sessions copy `claude --resume <id>` to clipboard.
+- **Timeline view** (`⇶` toggle, persisted): every session as a swimlane on one shared wall-clock axis — see cross-project concurrency at a glance. 1h/3h/6h presets, drag-pan (clamped at now), live edge with now-line, category-colored activity blocks, sub-agent branch spans (nested depth indented), click a lane to jump to its card.
 
 ## How it works
 

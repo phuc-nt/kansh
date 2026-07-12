@@ -84,10 +84,12 @@ function layoutLane(
 
   const firstMs = timed[0].ms;
   const lastMs = timed[timed.length - 1].ms;
-  // lane omitted when the session has no presence in the window at all
-  // (a running session idle since before the window still shows via its
-  // open trailing block only if its last event is inside; decided: omit)
-  if (lastMs < window.startMs || firstMs > window.endMs) return null;
+  const isLiveSession = session.status !== 'ended';
+  // Ended sessions with no presence in the window are omitted. LIVE sessions
+  // (running or waiting) always keep a lane — a monitor must not hide a
+  // session that is waiting for the user just because it outlasted the window.
+  if (!isLiveSession && (lastMs < window.startMs || firstMs > window.endMs)) return null;
+  if (firstMs > window.endMs) return null; // starts after the window, nothing to show yet
 
   // --- activity blocks ---
   const rawBlocks: Array<{ startMs: number; endMs: number; categories: Map<ToolCategory, number>; count: number }> = [];
@@ -126,7 +128,8 @@ function layoutLane(
     droppedBlocks = blocks.length - MAX_BLOCKS_PER_LANE;
     blocks = blocks.slice(-MAX_BLOCKS_PER_LANE); // keep newest
   }
-  if (blocks.length === 0) return null;
+  // live sessions keep an empty lane (visible label + status, no blocks)
+  if (blocks.length === 0 && !isLiveSession) return null;
 
   // --- branch spans (subagent lifetimes) ---
   const branches: BranchSpan[] = [];
@@ -150,17 +153,23 @@ function layoutLane(
       }
     }
   }
-  // Spans with no observed end: genuinely open only while the session runs
-  // AND the spawn is near the activity tip. An old spawn with lots of later
-  // activity means its end fell outside the replayed tail — render a short
-  // tick instead of a misleading full-width bar.
+  // Spans with no observed end: the deciding signal is the BRANCH'S OWN
+  // recent activity, not session-wide lastMs — a long-running subagent keeps
+  // emitting its own events, while a branch whose end fell outside the
+  // replayed tail goes silent while the session moves on.
   const STALE_OPEN_MS = 10 * 60_000;
+  const lastOwnActivity = new Map<string, number>();
+  for (const { event, ms } of timed) {
+    if (event.agentId) lastOwnActivity.set(event.agentId, ms);
+  }
   const resolvedBranches = branches.map((b) => {
     if (b.endMs !== null) return b;
-    // end unseen + lots of later activity = end fell outside the tail → tick
-    if (lastMs - b.startMs > STALE_OPEN_MS) return { ...b, endMs: b.startMs + 60_000 };
-    if (session.status !== 'running') return { ...b, endMs: Math.min(lastMs, window.endMs) };
-    return b; // truly open: extends to the live edge
+    const lastOwn = lastOwnActivity.get(b.agentId) ?? b.startMs;
+    // branch silent while the session kept moving → end unseen; honest span
+    // is spawn → its own last activity
+    if (lastMs - lastOwn > STALE_OPEN_MS) return { ...b, endMs: lastOwn };
+    // agent recently active: open on a live session, clamped on an ended one
+    return isLiveSession ? b : { ...b, endMs: Math.min(lastMs, window.endMs) };
   });
   const visibleBranches = resolvedBranches
     .filter((b) => (b.endMs ?? nowMs) >= window.startMs && b.startMs <= window.endMs)

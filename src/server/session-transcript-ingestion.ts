@@ -35,6 +35,7 @@ interface SubagentMetaFile {
   agentType?: string;
   description?: string;
   toolUseId?: string;
+  spawnDepth?: number;
 }
 
 interface OpenSpawn {
@@ -210,17 +211,16 @@ export class SessionTranscriptIngestion {
       events.push(...parsed);
     }
 
-    // A tool-end on the main lane that matches an open subagent spawn closes
-    // that branch. Tool-ends are also remembered (bounded) so a spawn that
-    // registers late — e.g. replay ordering or slow meta.json — still closes.
+    // A tool-end matching an open subagent spawn closes that branch. Runs for
+    // EVERY lane: a depth-2 agent's Task tool-end lives in its parent AGENT's
+    // transcript, not main. Tool-ends are also remembered (bounded) so a spawn
+    // that registers late — replay ordering or slow meta.json — still closes.
     const closures: ParsedEvent[] = [];
-    if (identity.agentId === null) {
-      for (const event of events) {
-        if (event.kind !== 'tool-end' || !event.toolUseId) continue;
-        this.rememberToolEnd(identity.sessionId, event.toolUseId, event.ts);
-        const closure = this.closeSpawnIfOpen(identity.sessionId, event.toolUseId, event.ts, event.uuid);
-        if (closure) closures.push(closure);
-      }
+    for (const event of events) {
+      if (event.kind !== 'tool-end' || !event.toolUseId) continue;
+      this.rememberToolEnd(identity.sessionId, event.toolUseId, event.ts);
+      const closure = this.closeSpawnIfOpen(identity.sessionId, event.toolUseId, event.ts, event.uuid);
+      if (closure) closures.push(closure);
     }
 
     this.store.applyEvents(identity.sessionId, [...events, ...closures], quiet);
@@ -293,6 +293,7 @@ export class SessionTranscriptIngestion {
       kind: 'subagent-spawn',
       toolUseId: meta.toolUseId,
       agentType: meta.agentType,
+      spawnDepth: typeof meta.spawnDepth === 'number' ? meta.spawnDepth : undefined,
       label: meta.description,
     };
 

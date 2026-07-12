@@ -1,6 +1,11 @@
 # Kansh System Architecture
 
-Updated: 2026-07-12 (v0.2.0 — wave 1 "Denser & Richer" complete)
+Updated: 2026-07-12 (v0.3.0 — wave 2 "New Perspectives" complete)
+
+## v0.3 additions
+
+- **Timeline view**: second view mode (toggle, localStorage-persisted). `src/ui/timeline-layout-engine.ts` — pure `(sessions, window, nowMs) → lanes` with activity-block merging (<60s gaps), branch spans, window clamping. Open-span rule: a branch with unseen end stays open only if ITS OWN agent had activity within 10min of the session tip (session-wide lastMs falsely collapses long-running subagents); live (running/waiting) sessions always keep a lane. Pan clamps at real now; pointercancel handled; drag suppresses lane-click jump.
+- **Sub-sub-agent depth**: `spawnDepth` threaded meta.json → spawn event → both views (nested indent). Ingestion closure matching runs on ALL lanes — a depth-2 agent's Task tool-end lives in its parent agent's transcript, not main (bug found by fixture-first approach).
 
 ## v0.2 additions
 

@@ -153,6 +153,37 @@ describe('compression + gaps', () => {
     expect(layout.gaps[0].durationMs).toBeGreaterThanOrEqual(4 * 60 * 1000);
   });
 
+  test('depth-2: nested agent anchors on parent agent lane and merges back to it', () => {
+    const layout = layoutSessionGraph([
+      // main spawns A
+      ev('tool-start', { t: 0, uuid: 'main-task', toolName: 'Task', toolUseId: 'spawnA' }),
+      ev('subagent-spawn', { t: 1, uuid: 'spawn-a', agentId: 'A', toolUseId: 'spawnA', spawnDepth: 1 }),
+      // A spawns B (Task tool-start lives on A's lane)
+      ev('tool-start', { t: 2, uuid: 'a-task', agentId: 'A', toolName: 'Task', toolUseId: 'spawnB' }),
+      ev('subagent-spawn', { t: 3, uuid: 'spawn-b', agentId: 'B', toolUseId: 'spawnB', spawnDepth: 2 }),
+      ev('assistant-message', { t: 4, agentId: 'B', label: 'nested work' }),
+      // B's result returns to A's lane
+      ev('tool-end', { t: 5, uuid: 'a-task-end', agentId: 'A', toolUseId: 'spawnB' }),
+      ev('subagent-end', { t: 6, agentId: 'B', toolUseId: 'spawnB' }),
+      // A finishes back to main
+      ev('tool-end', { t: 7, uuid: 'main-task-end', toolUseId: 'spawnA' }),
+      ev('subagent-end', { t: 8, agentId: 'A', toolUseId: 'spawnA' }),
+    ]);
+    const col = (uuid: string) => layout.nodes.find((n) => n.uuid === uuid)?.column;
+    // B branches out FROM A's Task node, on its own column
+    expect(layout.edges).toContainEqual({ fromUuid: 'a-task', toUuid: 'spawn-b', kind: 'branch-out' });
+    expect(col('spawn-b')).not.toBe(0);
+    expect(col('spawn-b')).not.toBe(col('spawn-a'));
+    // B merges into A's tool-end; A merges into main's tool-end
+    expect(layout.edges).toContainEqual(
+      expect.objectContaining({ toUuid: 'a-task-end', kind: 'merge-in' }),
+    );
+    expect(layout.edges).toContainEqual(
+      expect.objectContaining({ toUuid: 'main-task-end', kind: 'merge-in' }),
+    );
+    expect(layout.openBranchTips).toHaveLength(0);
+  });
+
   test('last event of a lane is never compressed (pulse target)', () => {
     const layout = layoutSessionGraph([ev('user-message', { t: 0, uuid: 'u' }), ...minorRun(3, 1)]);
     // trailing run: the final minor stays a node so the live pulse has a target

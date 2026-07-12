@@ -75,6 +75,12 @@ export const TimelineLaneRow = memo(function TimelineLaneRow({
           ‹
         </text>
       ) : null}
+      {lane.clippedRight ? (
+        <text x={windowEndX - 8} y={trackY + TRACK_H - 3} className="clip-hint">
+          ›
+        </text>
+      ) : null}
+      {lane.droppedBlocks > 0 ? <title>{`${lane.droppedBlocks} older blocks not shown`}</title> : null}
     </g>
   );
 });

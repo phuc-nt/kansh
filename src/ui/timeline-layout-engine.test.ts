@@ -89,19 +89,67 @@ describe('layoutTimeline', () => {
     expect(lane.blocks[0].endMs).toBe(nowMs);
   });
 
-  test('open subagent at window edge yields endMs null; closed one is clamped', () => {
+  test('open subagent stays null only on a running session near the tip', () => {
     const events = [
       ev('subagent-spawn', T0 + 5 * MIN, { agentId: 'A', toolUseId: 't1', agentType: 'Explore' }),
       ev('subagent-spawn', T0 + 6 * MIN, { agentId: 'B', toolUseId: 't2' }),
       ev('subagent-end', T0 + 10 * MIN, { agentId: 'B', toolUseId: 't2' }),
     ];
-    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
-    const a = lane.branches.find((b) => b.agentId === 'A');
-    const b = lane.branches.find((b) => b.agentId === 'B');
+    // running session, spawn within the stale threshold of last activity → truly open
+    const [running] = layoutTimeline([session(events, { status: 'running' })], WINDOW, WINDOW.endMs);
+    const a = running.branches.find((b) => b.agentId === 'A');
+    const b = running.branches.find((b) => b.agentId === 'B');
     expect(a?.endMs).toBeNull();
     expect(a?.agentType).toBe('Explore');
     expect(b?.endMs).toBe(T0 + 10 * MIN);
     expect(a?.depth).toBe(1); // default when spawnDepth absent
+
+    // ended session: unseen end clamps to last activity instead of full width
+    const [ended] = layoutTimeline([session(events, { status: 'ended' })], WINDOW, WINDOW.endMs);
+    expect(ended.branches.find((br) => br.agentId === 'A')?.endMs).toBe(T0 + 10 * MIN);
+  });
+
+  test('silent open span (session moved on without the branch) clamps to its own last activity', () => {
+    const events = [
+      ev('subagent-spawn', T0 + MIN, { agentId: 'A', toolUseId: 't1' }),
+      ev('assistant-message', T0 + 3 * MIN, { agentId: 'A', label: 'work' }),
+      ev('user-message', T0 + 30 * MIN), // session kept moving; A went silent, end unseen
+    ];
+    const [lane] = layoutTimeline([session(events, { status: 'running' })], WINDOW, WINDOW.endMs);
+    expect(lane.branches[0].endMs).toBe(T0 + 3 * MIN); // spawn -> A's own last activity
+  });
+
+  test('genuinely long-running subagent (own recent activity) stays open', () => {
+    const events = [
+      ev('subagent-spawn', T0 + MIN, { agentId: 'A', toolUseId: 't1' }),
+      // A keeps working for 25 minutes — its own events advance with the session
+      ...Array.from({ length: 5 }, (_, i) =>
+        ev('tool-start', T0 + (5 + i * 5) * MIN, { agentId: 'A', toolName: 'Read', toolUseId: `r${i}` }),
+      ),
+    ];
+    const [lane] = layoutTimeline([session(events, { status: 'running' })], WINDOW, WINDOW.endMs);
+    expect(lane.branches[0].endMs).toBeNull(); // still open, not collapsed
+  });
+
+  test('waiting session keeps its lane even with no in-window activity', () => {
+    const events = [ev('user-message', T0 - 120 * MIN)]; // all activity before window
+    const lanes = layoutTimeline(
+      [session(events, { status: 'waiting', waitingReason: 'user-turn' })],
+      WINDOW,
+      WINDOW.endMs,
+    );
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0].blocks).toHaveLength(0);
+    expect(lanes[0].status).toBe('waiting');
+  });
+
+  test('spawnDepth threads through to branch span depth', () => {
+    const events = [
+      ev('subagent-spawn', T0 + MIN, { agentId: 'X', toolUseId: 'tx', spawnDepth: 2 }),
+      ev('subagent-end', T0 + 2 * MIN, { agentId: 'X', toolUseId: 'tx' }),
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.branches[0].depth).toBe(2);
   });
 
   test('lanes ordered by first in-window activity; two sessions overlap', () => {

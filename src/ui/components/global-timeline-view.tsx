@@ -43,12 +43,12 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const [mode, setMode] = useState<WindowMode>({ live: true });
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  // live edge advances on a coarse tick; paused mode freezes the window
+  // "now" always advances (now-line + open spans stay honest even when the
+  // window is unpinned); only the window's right edge depends on the mode
   useEffect(() => {
-    if (!mode.live) return;
     const timer = setInterval(() => setNowMs(Date.now()), LIVE_TICK_MS);
     return () => clearInterval(timer);
-  }, [mode.live]);
+  }, []);
 
   const endMs = mode.live ? nowMs : mode.endMs;
   const window = useMemo(() => ({ startMs: endMs - spanMs, endMs }), [endMs, spanMs]);
@@ -56,10 +56,13 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
 
   const msToX = (ms: number) => ((ms - window.startMs) / spanMs) * VIEW_W;
 
-  // drag-pan: px delta -> ms delta; any pan unpins the live edge
+  // drag-pan: px delta -> ms delta; any pan unpins the live edge.
+  // didDrag suppresses the click-to-jump that would otherwise fire on release.
   const dragState = useRef<{ startX: number; startEndMs: number; svgWidthPx: number } | null>(null);
+  const didDrag = useRef(false);
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
+    didDrag.current = false;
     dragState.current = {
       startX: e.clientX,
       startEndMs: endMs,
@@ -69,13 +72,24 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const drag = dragState.current;
     if (!drag) return;
+    if (e.buttons === 0) {
+      // pointercancel/lost-capture left stale state — stop phantom panning
+      dragState.current = null;
+      return;
+    }
     const dxPx = e.clientX - drag.startX;
     if (Math.abs(dxPx) < 3) return; // click tolerance
+    didDrag.current = true;
     const msPerPx = spanMs / drag.svgWidthPx;
-    setMode({ live: false, endMs: drag.startEndMs - dxPx * msPerPx });
+    // never pan into the future — there is nothing there to show
+    const panned = Math.min(drag.startEndMs - dxPx * msPerPx, Date.now());
+    setMode({ live: false, endMs: panned });
   };
   const onPointerUp = () => {
     dragState.current = null;
+  };
+  const selectLane = (sessionId: string) => {
+    if (!didDrag.current) onJumpToSession(sessionId);
   };
 
   const ticks = useMemo(() => {
@@ -132,6 +146,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
           onPointerLeave={onPointerUp}
         >
           {ticks.map((t) => {
@@ -153,7 +168,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
                 laneIndex={i}
                 msToX={msToX}
                 windowEndX={VIEW_W}
-                onSelect={onJumpToSession}
+                onSelect={selectLane}
               />
             ))}
           </g>
