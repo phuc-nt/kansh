@@ -318,8 +318,8 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
         <div
           className="timeline-tooltip"
           style={{
-            left: Math.min(tooltip.x + 12, globalThis.innerWidth - 320),
-            top: Math.min(tooltip.y + 14, globalThis.innerHeight - 60),
+            left: Math.max(8, Math.min(tooltip.x + 12, globalThis.innerWidth - 320)),
+            top: Math.max(8, Math.min(tooltip.y + 14, globalThis.innerHeight - 60)),
           }}
         >
           <strong>{tooltip.lane.label}</strong> · {formatTick(tooltip.block.startMs)}–{formatTick(tooltip.block.endMs)}

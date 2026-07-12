@@ -27,6 +27,7 @@ Semantic-first cards (v0.4): mỗi card trả lời trong 1 giây — 🎯 nhi�
 - Filter bar: hide ended, filter by project.
 - `↗` button: focus the session's window — VSCode workspace via `code <cwd>`, CLI via terminal-app activation, ended sessions copy `claude --resume <id>` to clipboard.
 - **Timeline view** (`⇶` toggle, persisted): every session as a swimlane on one shared wall-clock axis — see cross-project concurrency at a glance. 1h/3h/6h presets, drag-pan (clamped at now), live edge with now-line, category-colored activity blocks, sub-agent branch spans (nested depth indented), click a lane to jump to its card.
+- **Timeline semantics** (v0.5): semantic markers trên mỗi lane (◆ prompt, ✕ tool lỗi, ● câu hỏi đang chờ — hover ra text), vệt hatch vàng khi session chờ bạn (mờ hơn nếu suy luận từ khoảng lặng), hover block → tooltip (giờ · events · tools · tokens), click block → popover tại chỗ với danh sách events trong khoảng đó + nút "mở card". Crosshair scrubber đọc lát cắt thời gian trên mọi lane; attention ribbon: mỗi ◆ là một prompt của bạn (màu theo lane) + badge `⇄ N switches` đếm số lần chuyển sự chú ý.
 
 ## How it works
 

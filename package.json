@@ -1,6 +1,6 @@
 {
   "name": "kansh",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local read-only monitor for Claude Code sessions \u2014 live git-graph timeline of agents, sub-agents, and tool calls",
   "type": "module",
   "scripts": {

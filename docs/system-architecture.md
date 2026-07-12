@@ -1,6 +1,12 @@
 # Kansh System Architecture
 
-Updated: 2026-07-12 (v0.4.0 — "Semantic Layer" complete)
+Updated: 2026-07-12 (v0.5.0 — "Timeline Semantics" complete)
+
+## v0.5 additions (timeline: mirror → analyzer)
+
+- **Engine** (`src/ui/timeline-layout-engine.ts`, pure + fixture-tested): lanes carry `markers` (prompt/error/question, cap 80 newest per lane) and `waitingStretches` (live waiting stretch + inferred stretches from >2min silence before a user prompt); `ActivityBlock` enriched with `dominantTools`/`tokensIn`/`tokensOut`. `computeAttention(sessions, window)` is a SEPARATE export (layoutTimeline signature stays stable) → user-prompt points + cross-session switch count.
+- **Overlays** (state local to `GlobalTimelineView`, one tooltip + one popover max): hover block → rich HTML tooltip; click block → in-place popover (events filtered by block time range from `session.events`, cap 15, "mở card" closes popover then jumps). Closes on Escape / outside mousedown / pan. Pointer-capture footgun: capturing on pointerdown retargets clicks away from block rects — capture is deferred until the ≥3px pan threshold.
+- **Scrubber + ribbon**: crosshair on plain hover (line + HH:MM + per-lane chip: dominant tool or idle), suppressed while popover open, cleared on pan/leave. Per-pixel mousemove stays cheap because `msToX`/`pointerHandlers`/`selectLane` are memoized so memo'd lane rows don't re-render. Attention ribbon row renders `computeAttention` points as diamonds colored via `src/ui/lane-color-palette.ts` (shared with lane label chips) + `⇄ N switches` badge.
 
 ## v0.4 additions (mirror → analyzer)
 

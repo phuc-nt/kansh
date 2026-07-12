@@ -43,7 +43,7 @@ export const TimelineLaneRow = memo(function TimelineLaneRow({
   const trackY = top + 10;
 
   return (
-    <g className="timeline-lane">
+    <g className="timeline-lane" onClick={() => onSelect(lane.sessionId)}>
       {/* faint full-width track line for orientation */}
       <line x1={0} y1={trackY + TRACK_H / 2} x2={windowEndX} y2={trackY + TRACK_H / 2} className="lane-track-line" />
       {lane.waitingStretches.map((stretch, i) => {

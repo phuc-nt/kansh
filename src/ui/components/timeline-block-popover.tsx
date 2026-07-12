@@ -50,7 +50,10 @@ export const TimelineBlockPopover = memo(function TimelineBlockPopover({
   return (
     <div
       className="timeline-popover"
-      style={{ left: Math.min(x, window.innerWidth - 380), top: Math.min(y + 12, window.innerHeight - 320) }}
+      style={{
+        left: Math.max(8, Math.min(x, window.innerWidth - 380)),
+        top: Math.max(8, Math.min(y + 12, window.innerHeight - 320)),
+      }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -73,7 +76,13 @@ export const TimelineBlockPopover = memo(function TimelineBlockPopover({
         ))}
         {events.length === 0 ? <li className="popover-empty">events ngoài cửa sổ giữ lại của client</li> : null}
       </ul>
-      <button className="popover-open-card" onClick={() => onOpenCard(lane.sessionId)}>
+      <button
+        className="popover-open-card"
+        onClick={() => {
+          onClose();
+          onOpenCard(lane.sessionId);
+        }}
+      >
         mở card →
       </button>
     </div>
