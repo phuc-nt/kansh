@@ -198,7 +198,7 @@ export class SessionTranscriptIngestion {
 
     const events: ParsedEvent[] = [];
     for (const { record, byteStart, byteEnd } of records) {
-      this.store.applyMeta(identity.sessionId, extractSessionMeta(record));
+      this.store.applyMeta(identity.sessionId, extractSessionMeta(record), quiet);
       const parsed = parseTranscriptRecord(record, {
         sessionId: identity.sessionId,
         agentId: identity.agentId,

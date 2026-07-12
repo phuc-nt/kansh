@@ -6,10 +6,14 @@ import type { FileTouch } from '../../shared/normalized-event-types';
 
 const MAX_ROWS = 10;
 
-/** Path relative to the session cwd when possible; middle-ellipsis via CSS. */
+/**
+ * Path relative to the session cwd when possible. LRM-wrapped: the list uses
+ * CSS `direction: rtl` for start-ellipsis, which would otherwise reposition
+ * leading slashes and reorder genuine RTL filename segments.
+ */
 function displayPath(path: string, cwd: string): string {
-  if (cwd && path.startsWith(cwd + '/')) return path.slice(cwd.length + 1);
-  return path;
+  const rel = cwd && path.startsWith(cwd + '/') ? path.slice(cwd.length + 1) : path;
+  return `‎${rel}‎`;
 }
 
 export const SessionFileActivity = memo(function SessionFileActivity({

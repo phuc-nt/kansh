@@ -134,7 +134,7 @@ export class SessionStateStore {
   }
 
   /** Merge metadata fields scraped from transcript records (first-wins; titles latest-wins). */
-  applyMeta(sessionId: string, meta: SessionMetaFields): void {
+  applyMeta(sessionId: string, meta: SessionMetaFields, quiet = false): void {
     const state = this.sessions.get(sessionId);
     if (!state) return;
     if (meta.cwd && !state.cwd) state.cwd = meta.cwd;
@@ -145,7 +145,7 @@ export class SessionStateStore {
     // for the next unrelated event to surface.
     if (meta.aiTitle) state.aiTitle = meta.aiTitle;
     if (meta.customTitle) state.customTitle = meta.customTitle;
-    if (meta.aiTitle || meta.customTitle) this.emitSemanticsIfChanged(state, false);
+    if (meta.aiTitle || meta.customTitle) this.emitSemanticsIfChanged(state, quiet);
   }
 
   /** Assign seq numbers and append; broadcasts unless quiet (startup replay). */
@@ -168,7 +168,7 @@ export class SessionStateStore {
       }
       if (event.model && event.agentId === null) state.model = event.model;
       if (event.agentId === null) state.lastMainEventKind = event.kind;
-      this.applySemantics(state, event);
+      this.applySemantics(state, event, quiet);
       if (!quiet) this.listeners.onEvent(event);
     }
     this.emitSemanticsIfChanged(state, quiet);
@@ -195,19 +195,24 @@ export class SessionStateStore {
   /** cross-session edit index: path → sessionId → last edit epoch ms */
   private editIndex = new Map<string, Map<string, number>>();
 
-  /** Record an edit in the cross-session index and refresh conflicts for that path. */
-  private noteEdit(path: string, sessionId: string, ms: number): void {
+  /**
+   * Record an edit in the cross-session index. Immediate recompute only for
+   * live multi-writer paths — quiet startup replay must not broadcast, and the
+   * periodic liveness sample recomputes within seconds anyway.
+   */
+  private noteEdit(path: string, sessionId: string, ms: number, quiet: boolean): void {
     let byPath = this.editIndex.get(path);
     if (!byPath) this.editIndex.set(path, (byPath = new Map()));
     byPath.set(sessionId, Math.max(byPath.get(sessionId) ?? 0, ms));
-    if (byPath.size >= 2) this.recomputeConflicts();
+    if (!quiet && byPath.size >= 2) this.recomputeConflicts();
   }
 
   /**
    * Rebuild conflicts for all sessions: a path counts when ≥2 LIVE sessions
    * edited it within the recent window. Sessions whose conflict list changed
-   * get a semantics broadcast. Cheap: editIndex only holds multi-writer paths
-   * after pruning, and sessions are few.
+   * get a semantics broadcast. Entries older than the window are pruned here
+   * (they can never conflict again; a re-edit re-inserts), keeping the index
+   * bounded by recently-edited paths even on multi-day uptime.
    */
   recomputeConflicts(nowMs = Date.now()): void {
     const fresh = new Map<string, FileConflict[]>();
@@ -215,13 +220,11 @@ export class SessionStateStore {
       const liveRecent: string[] = [];
       for (const [sessionId, ms] of byPath) {
         const session = this.sessions.get(sessionId);
-        if (!session) {
-          byPath.delete(sessionId); // evicted session — prune the index
+        if (!session || nowMs - ms > SessionStateStore.CONFLICT_WINDOW_MS) {
+          byPath.delete(sessionId); // evicted session or stale edit — prune
           continue;
         }
-        if (session.status !== 'ended' && nowMs - ms <= SessionStateStore.CONFLICT_WINDOW_MS) {
-          liveRecent.push(sessionId);
-        }
+        if (session.status !== 'ended') liveRecent.push(sessionId);
       }
       if (byPath.size === 0) {
         this.editIndex.delete(path);
@@ -247,7 +250,7 @@ export class SessionStateStore {
   }
 
   /** Semantic-layer rules; see contract docs for field meanings. */
-  private applySemantics(state: SessionState, event: NormalizedEvent): void {
+  private applySemantics(state: SessionState, event: NormalizedEvent, quiet = false): void {
     const isMain = event.agentId === null;
 
     // mission: latest real user prompt (noise already filtered by the parser).
@@ -316,17 +319,20 @@ export class SessionStateStore {
       }
     }
 
-    // friction: blocked tools (permission denials, hook preventions)
+    // friction: blocked tools (permission denials, hook preventions).
+    // Session-wide by design (any lane) — timeline markers are main-lane only,
+    // so the badge can legitimately exceed visible markers.
     if (event.blocked) state.blockedCount += 1;
 
     // file activity: aggregate per path, capped
-    if (event.fileTouch) this.applyFileTouch(state, event.fileTouch, event.ts);
+    if (event.fileTouch) this.applyFileTouch(state, event.fileTouch, event.ts, quiet);
   }
 
   private applyFileTouch(
     state: SessionState,
     touch: { path: string; action: 'edit' | 'read' },
     ts: string,
+    quiet: boolean,
   ): void {
     let entry = state.filesTouched.get(touch.path);
     if (!entry) {
@@ -351,7 +357,7 @@ export class SessionStateStore {
       const ms = Date.parse(ts);
       if (!Number.isNaN(ms)) {
         entry.lastEditMs = Math.max(entry.lastEditMs ?? 0, ms);
-        this.noteEdit(touch.path, state.sessionId, entry.lastEditMs);
+        this.noteEdit(touch.path, state.sessionId, entry.lastEditMs, quiet);
       }
     } else {
       entry.reads += 1;
@@ -442,6 +448,11 @@ export class SessionStateStore {
         state.waitingReason = undefined;
       }
       if (next !== state.status) {
+        // a skill badge should not outlive the work: clear once nothing runs
+        if (next !== 'running') {
+          state.currentSkill = undefined;
+          state.skillTtl = 0;
+        }
         state.status = next;
         this.listeners.onStatusChange(state.sessionId, next, state.lastActivityAt, state.waitingReason);
       }
