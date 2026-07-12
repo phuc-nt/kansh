@@ -390,6 +390,26 @@ body {
 .clip-hint { font-size: 10px; fill: var(--text-dim); }
 
 /* --- timeline semantics (v0.5): markers, waiting hatch, tooltip, popover --- */
+.switch-badge { color: var(--text-dim); font-size: 11px; }
+.timeline-ribbon-row { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-card-header, #131926); }
+.timeline-ribbon-spacer {
+  width: 190px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 10px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+}
+.timeline-ribbon { flex: 1; width: 100%; display: block; }
+.ribbon-baseline { stroke: #1d2430; stroke-width: 1; }
+.lane-color-chip { width: 8px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+.scrub-line { stroke: #8899b0; stroke-width: 1; stroke-dasharray: 3 3; }
+.scrub-time { font-size: 10px; fill: #b9c4d4; }
+.scrub-chip { font-size: 9px; fill: #b9c4d4; }
+.scrub-chip-idle { fill: #4a5464; }
+
 .lane-marker { cursor: default; }
 .waiting-stretch { pointer-events: none; }
 .waiting-stretch.inferred { opacity: 0.5; }

@@ -2,11 +2,13 @@
 // Owns the time window (span presets, live-pinned right edge, drag-pan) and
 // the ms->px mapping; lane geometry comes from the pure timeline engine.
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionSnapshot } from '../../shared/normalized-event-types';
-import { layoutTimeline, type ActivityBlock, type TimelineLane } from '../timeline-layout-engine';
+import { computeAttention, layoutTimeline, type ActivityBlock, type TimelineLane } from '../timeline-layout-engine';
 import { LANE_HEIGHT, TimelineLaneRow, type BlockPointerHandlers } from './timeline-lane-row';
 import { TimelineBlockPopover } from './timeline-block-popover';
+import { TimelineAttentionRibbon } from './timeline-attention-ribbon';
+import { laneColor } from '../lane-color-palette';
 
 interface BlockAnchor {
   lane: TimelineLane;
@@ -59,6 +61,8 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   // block inspection overlays: at most one tooltip and one popover at a time
   const [tooltip, setTooltip] = useState<BlockAnchor | null>(null);
   const [popover, setPopover] = useState<BlockAnchor | null>(null);
+  // crosshair scrubber: time under the cursor, null when not hovering the svg
+  const [scrubMs, setScrubMs] = useState<number | null>(null);
 
   // popover closes on outside click or Escape
   useEffect(() => {
@@ -85,8 +89,21 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const endMs = mode.live ? nowMs : mode.endMs;
   const window = useMemo(() => ({ startMs: endMs - spanMs, endMs }), [endMs, spanMs]);
   const lanes = useMemo(() => layoutTimeline(sessions, window, endMs), [sessions, window, endMs]);
+  const attention = useMemo(() => computeAttention(sessions, window), [sessions, window]);
+  const laneIndexBySession = useMemo(
+    () => new Map(lanes.map((lane, i) => [lane.sessionId, i])),
+    [lanes],
+  );
+  const laneLabelBySession = useMemo(
+    () => new Map(lanes.map((lane) => [lane.sessionId, lane.label])),
+    [lanes],
+  );
 
-  const msToX = (ms: number) => ((ms - window.startMs) / spanMs) * VIEW_W;
+  // stable mapping fn so scrubber state changes don't re-render memo'd lane rows
+  const msToX = useCallback(
+    (ms: number) => ((ms - window.startMs) / spanMs) * VIEW_W,
+    [window.startMs, spanMs],
+  );
 
   // drag-pan: px delta -> ms delta; any pan unpins the live edge.
   // didDrag suppresses the click-to-jump that would otherwise fire on release.
@@ -103,7 +120,15 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   };
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const drag = dragState.current;
-    if (!drag) return;
+    if (!drag) {
+      // plain hover: drive the crosshair scrubber (suppressed while inspecting)
+      if (popover === null) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const frac = (e.clientX - rect.left) / rect.width;
+        setScrubMs(window.startMs + frac * spanMs);
+      }
+      return;
+    }
     if (e.buttons === 0) {
       // pointercancel/lost-capture left stale state — stop phantom panning
       dragState.current = null;
@@ -115,6 +140,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
       // capture only once a real pan starts; capturing on pointerdown would
       // retarget the click away from block rects and kill the popover
       e.currentTarget.setPointerCapture(e.pointerId);
+      setScrubMs(null); // panning — crosshair would fight the moving window
     }
     didDrag.current = true;
     const msPerPx = spanMs / drag.svgWidthPx;
@@ -125,9 +151,16 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const onPointerUp = () => {
     dragState.current = null;
   };
-  const selectLane = (sessionId: string) => {
-    if (!didDrag.current) onJumpToSession(sessionId);
+  const onPointerLeave = () => {
+    dragState.current = null;
+    setScrubMs(null);
   };
+  const selectLane = useCallback(
+    (sessionId: string) => {
+      if (!didDrag.current) onJumpToSession(sessionId);
+    },
+    [onJumpToSession],
+  );
 
   // stable handler object so memo'd lane rows don't re-render on hover
   const popoverOpen = popover !== null;
@@ -175,11 +208,28 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
         ) : (
           <button onClick={() => setMode({ live: true })}>⟳ now</button>
         )}
-        <span className="timeline-hint">kéo để pan · click lane để mở card</span>
+        {attention.points.length > 0 ? (
+          <span className="switch-badge" title="số lần bạn chuyển sự chú ý giữa các session trong cửa sổ">
+            ⇄ {attention.switchCount} switches
+          </span>
+        ) : null}
+        <span className="timeline-hint">kéo để pan · hover block xem chi tiết · click block để inspect</span>
       </div>
+      {attention.points.length > 0 ? (
+        <div className="timeline-ribbon-row">
+          <div className="timeline-ribbon-spacer">prompts</div>
+          <TimelineAttentionRibbon
+            attention={attention}
+            laneIndexBySession={laneIndexBySession}
+            laneLabelBySession={laneLabelBySession}
+            msToX={msToX}
+            viewWidth={VIEW_W}
+          />
+        </div>
+      ) : null}
       <div className="timeline-body">
         <div className="timeline-labels" style={{ paddingTop: AXIS_H }}>
-          {lanes.map((lane) => (
+          {lanes.map((lane, i) => (
             <div
               key={lane.sessionId}
               className={`timeline-label status-${lane.status}`}
@@ -187,6 +237,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
               onClick={() => onJumpToSession(lane.sessionId)}
             >
               <span className={`status-dot status-dot-${lane.status}`} />
+              <span className="lane-color-chip" style={{ background: laneColor(i) }} />
               <span className="timeline-label-text">{lane.label}</span>
               {lane.status === 'waiting' ? <span className="timeline-wait">⏸</span> : null}
             </div>
@@ -202,7 +253,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          onPointerLeave={onPointerUp}
+          onPointerLeave={onPointerLeave}
         >
           <defs>
             {/* diagonal amber stripes for waiting stretches */}
@@ -237,6 +288,29 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
           </g>
           {nowX >= 0 && nowX <= VIEW_W ? (
             <line x1={nowX} y1={AXIS_H - 4} x2={nowX} y2={height} className="now-line" />
+          ) : null}
+          {scrubMs !== null && popover === null ? (
+            <g className="scrubber" pointerEvents="none">
+              <line x1={msToX(scrubMs)} y1={AXIS_H - 8} x2={msToX(scrubMs)} y2={height} className="scrub-line" />
+              <text x={msToX(scrubMs) + 4} y={AXIS_H - 10} className="scrub-time">
+                {formatTick(scrubMs)}
+              </text>
+              {lanes.map((lane, i) => {
+                const hit = lane.blocks.find((b) => scrubMs >= b.startMs && scrubMs <= b.endMs);
+                const label = hit ? (hit.dominantTools[0] ?? hit.dominantCategory) : 'idle';
+                const y = AXIS_H + i * LANE_HEIGHT + 8;
+                return (
+                  <text
+                    key={lane.sessionId}
+                    x={msToX(scrubMs) + 5}
+                    y={y}
+                    className={hit ? 'scrub-chip' : 'scrub-chip scrub-chip-idle'}
+                  >
+                    {label}
+                  </text>
+                );
+              })}
+            </g>
           ) : null}
         </svg>
       </div>
