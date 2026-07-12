@@ -4,8 +4,22 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionSnapshot } from '../../shared/normalized-event-types';
-import { layoutTimeline } from '../timeline-layout-engine';
-import { LANE_HEIGHT, TimelineLaneRow } from './timeline-lane-row';
+import { layoutTimeline, type ActivityBlock, type TimelineLane } from '../timeline-layout-engine';
+import { LANE_HEIGHT, TimelineLaneRow, type BlockPointerHandlers } from './timeline-lane-row';
+import { TimelineBlockPopover } from './timeline-block-popover';
+
+interface BlockAnchor {
+  lane: TimelineLane;
+  block: ActivityBlock;
+  x: number;
+  y: number;
+}
+
+function fmtTokensShort(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
+}
 
 /** virtual svg width; viewBox scales it to the container */
 const VIEW_W = 1200;
@@ -42,6 +56,24 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const [spanMs, setSpanMs] = useState(SPAN_PRESETS[1].ms);
   const [mode, setMode] = useState<WindowMode>({ live: true });
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // block inspection overlays: at most one tooltip and one popover at a time
+  const [tooltip, setTooltip] = useState<BlockAnchor | null>(null);
+  const [popover, setPopover] = useState<BlockAnchor | null>(null);
+
+  // popover closes on outside click or Escape
+  useEffect(() => {
+    if (!popover) return;
+    const onDown = () => setPopover(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPopover(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [popover]);
 
   // "now" always advances (now-line + open spans stay honest even when the
   // window is unpinned); only the window's right edge depends on the mode
@@ -61,8 +93,8 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const dragState = useRef<{ startX: number; startEndMs: number; svgWidthPx: number } | null>(null);
   const didDrag = useRef(false);
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
     didDrag.current = false;
+    setTooltip(null); // pan gesture starting — overlay would trail the wrong spot
     dragState.current = {
       startX: e.clientX,
       startEndMs: endMs,
@@ -79,6 +111,11 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
     }
     const dxPx = e.clientX - drag.startX;
     if (Math.abs(dxPx) < 3) return; // click tolerance
+    if (!didDrag.current) {
+      // capture only once a real pan starts; capturing on pointerdown would
+      // retarget the click away from block rects and kill the popover
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     didDrag.current = true;
     const msPerPx = spanMs / drag.svgWidthPx;
     // never pan into the future — there is nothing there to show
@@ -91,6 +128,24 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
   const selectLane = (sessionId: string) => {
     if (!didDrag.current) onJumpToSession(sessionId);
   };
+
+  // stable handler object so memo'd lane rows don't re-render on hover
+  const popoverOpen = popover !== null;
+  const pointerHandlers = useMemo<BlockPointerHandlers>(
+    () => ({
+      onBlockHover: (lane, block, clientX, clientY) => {
+        if (popoverOpen) return; // popover has focus; tooltip would just overlap it
+        setTooltip({ lane, block, x: clientX, y: clientY });
+      },
+      onBlockLeave: () => setTooltip(null),
+      onBlockClick: (lane, block, clientX, clientY) => {
+        if (didDrag.current) return; // a ≥3px pan must never open the popover
+        setTooltip(null);
+        setPopover({ lane, block, x: clientX, y: clientY });
+      },
+    }),
+    [popoverOpen],
+  );
 
   const ticks = useMemo(() => {
     const step = tickStepMs(spanMs);
@@ -149,6 +204,13 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
           onPointerCancel={onPointerUp}
           onPointerLeave={onPointerUp}
         >
+          <defs>
+            {/* diagonal amber stripes for waiting stretches */}
+            <pattern id="wait-hatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width={6} height={6} fill="rgba(245, 166, 35, 0.10)" />
+              <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(245, 166, 35, 0.55)" strokeWidth={2} />
+            </pattern>
+          </defs>
           {ticks.map((t) => {
             const x = msToX(t);
             return (
@@ -169,6 +231,7 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
                 msToX={msToX}
                 windowEndX={VIEW_W}
                 onSelect={selectLane}
+                pointerHandlers={pointerHandlers}
               />
             ))}
           </g>
@@ -177,6 +240,34 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
           ) : null}
         </svg>
       </div>
+      {tooltip ? (
+        <div
+          className="timeline-tooltip"
+          style={{
+            left: Math.min(tooltip.x + 12, globalThis.innerWidth - 320),
+            top: Math.min(tooltip.y + 14, globalThis.innerHeight - 60),
+          }}
+        >
+          <strong>{tooltip.lane.label}</strong> · {formatTick(tooltip.block.startMs)}–{formatTick(tooltip.block.endMs)}
+          <br />
+          {tooltip.block.eventCount} events
+          {tooltip.block.dominantTools.length > 0 ? ` · ${tooltip.block.dominantTools.join(', ')}` : ''}
+          {tooltip.block.tokensIn + tooltip.block.tokensOut > 0
+            ? ` · ▲${fmtTokensShort(tooltip.block.tokensIn)} ▼${fmtTokensShort(tooltip.block.tokensOut)}`
+            : ''}
+        </div>
+      ) : null}
+      {popover ? (
+        <TimelineBlockPopover
+          lane={popover.lane}
+          block={popover.block}
+          session={sessions.find((s) => s.sessionId === popover.lane.sessionId)}
+          x={popover.x}
+          y={popover.y}
+          onClose={() => setPopover(null)}
+          onOpenCard={onJumpToSession}
+        />
+      ) : null}
     </div>
   );
 });
