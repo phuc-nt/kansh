@@ -177,6 +177,23 @@ describe('layoutTimeline', () => {
     expect(lane.markers[2].label).toBe('Chọn gì?');
   });
 
+  test('markers: blocked beats plain error and carries the reason', () => {
+    const events = [
+      ev('tool-end', T0 + 2 * MIN, {
+        toolUseId: 'd1',
+        isError: true,
+        blocked: { kind: 'permission-rule', reason: 'BLOCKED: node_modules denied' },
+      }),
+      ev('assistant-message', T0 + 3 * MIN, {
+        label: '⛔ hook chặn: tests failed',
+        blocked: { kind: 'hook-block', reason: 'tests failed' },
+      }),
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.markers.map((m) => m.kind)).toEqual(['blocked', 'blocked']);
+    expect(lane.markers[0].label).toBe('BLOCKED: node_modules denied');
+  });
+
   test('markers outside window excluded; cap keeps newest 80', () => {
     const events = [
       ev('user-message', T0 - 10 * MIN, { label: 'trước window' }),

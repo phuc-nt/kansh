@@ -239,6 +239,17 @@ export const GlobalTimelineView = memo(function GlobalTimelineView({
               <span className={`status-dot status-dot-${lane.status}`} />
               <span className="lane-color-chip" style={{ background: laneColor(i) }} />
               <span className="timeline-label-text">{lane.label}</span>
+              {(() => {
+                const conflicts = sessions.find((s) => s.sessionId === lane.sessionId)?.conflicts;
+                return conflicts?.length ? (
+                  <span
+                    className="timeline-conflict"
+                    title={`trùng file với session khác:\n${conflicts.map((c) => c.path).join('\n')}`}
+                  >
+                    ⚠
+                  </span>
+                ) : null;
+              })()}
               {lane.status === 'waiting' ? <span className="timeline-wait">⏸</span> : null}
             </div>
           ))}

@@ -1,6 +1,14 @@
 # Kansh System Architecture
 
-Updated: 2026-07-12 (v0.5.0 — "Timeline Semantics" complete)
+Updated: 2026-07-12 (v0.6.0 — "Provenance & Conflict" complete)
+
+## v0.6 additions (provenance & conflict)
+
+- **Real session titles**: `type: ai-title`/`custom-title` records → `session.title` (custom > ai, latest wins; folder-name fallback). Title records carry no events, so `applyMeta` broadcasts the change itself. Used by card headers (folder demoted to subtitle via `src/ui/session-label.ts`) and timeline lane labels.
+- **File activity**: record-level `toolUseResult` classified defensively — edit = `filePath` + (`type` create/update or `oldString` key), read = `file.filePath`; unknown shapes skipped (format is not public; both shapes verified against real transcripts). Per-session `filesTouched` capped at 50, hottest-first; card expander lists top 10 cwd-relative.
+- **Cross-session edit conflicts** (the multi-session monitor's unique value): store keeps a global path→(sessionId→lastEditMs) index; ≥2 LIVE sessions editing the same file within 30min → `conflicts` on both, red banner on cards + ⚠ on lanes. Recomputed on each edit and each liveness sample (window is time-relative); write-tools only to avoid read noise.
+- **Skill attribution**: `attributionSkill` → event.skill on tool-starts; `currentSkill` = latest attributed main-lane tool, expiring after 10 unattributed tools. Card badge `⚙ <skill>`; popover shows the block's dominant skill.
+- **Friction**: `toolDenialKind` attaches `blocked {kind, reason}` to the tool-end; `type: system` records with `preventedContinuation`/`hookErrors` become synthetic blocked events. `blockedCount` badge on cards; 4th timeline marker kind `blocked` (hollow red square, beats plain error for the same event).
 
 ## v0.5 additions (timeline: mirror → analyzer)
 

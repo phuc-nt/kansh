@@ -47,6 +47,23 @@ export const TimelineBlockPopover = memo(function TimelineBlockPopover({
     return inRange.slice(-MAX_EVENTS);
   }, [session, block]);
 
+  // dominant skill among the block's tool calls, if any were attributed
+  const dominantSkill = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of events) {
+      if (e.skill) counts.set(e.skill, (counts.get(e.skill) ?? 0) + 1);
+    }
+    let best: string | undefined;
+    let bestCount = 0;
+    for (const [skill, count] of counts) {
+      if (count > bestCount) {
+        best = skill;
+        bestCount = count;
+      }
+    }
+    return best;
+  }, [events]);
+
   return (
     <div
       className="timeline-popover"
@@ -64,6 +81,7 @@ export const TimelineBlockPopover = memo(function TimelineBlockPopover({
       <div className="popover-meta">
         {block.eventCount} events
         {block.dominantTools.length > 0 ? ` · ${block.dominantTools.join(', ')}` : ''}
+        {dominantSkill ? ` · ⚙ ${dominantSkill}` : ''}
         {block.tokensIn + block.tokensOut > 0
           ? ` · ▲${fmtTokens(block.tokensIn)} ▼${fmtTokens(block.tokensOut)}`
           : ''}

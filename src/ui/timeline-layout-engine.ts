@@ -26,7 +26,7 @@ export interface ActivityBlock {
 /** Semantic point on a lane: user prompt, error result, or pending question. */
 export interface LaneMarker {
   ms: number;
-  kind: 'prompt' | 'error' | 'question';
+  kind: 'prompt' | 'error' | 'question' | 'blocked';
   label?: string;
 }
 
@@ -81,6 +81,7 @@ const MAX_MARKERS_PER_LANE = 80;
 const WAIT_MIN_MS = 2 * 60_000;
 
 function displayLabel(session: SessionSnapshot): string {
+  if (session.title) return session.title;
   if (session.cwd) return session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
   return session.slug || session.sessionId.slice(0, 8);
 }
@@ -237,6 +238,13 @@ function layoutLane(
     if (event.agentId !== null) continue;
     if (event.kind === 'user-message' && event.label) {
       markers.push({ ms, kind: 'prompt', label: event.label });
+    } else if (event.blocked) {
+      // blocked beats plain error: a denial is a distinct intervention point
+      markers.push({
+        ms,
+        kind: 'blocked',
+        label: event.blocked.reason ?? event.blocked.kind,
+      });
     } else if (event.kind === 'tool-end' && event.isError) {
       markers.push({ ms, kind: 'error' });
     } else if (event.kind === 'tool-start' && event.question) {

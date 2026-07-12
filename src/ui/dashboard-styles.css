@@ -375,6 +375,7 @@ body {
 .timeline-label:hover { background: var(--bg-card-header); }
 .timeline-label-text { font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; }
 .timeline-wait { color: var(--waiting); margin-left: auto; }
+.timeline-conflict { color: #ff4d4d; }
 .timeline-label.status-ended { opacity: 0.5; }
 
 .timeline-svg { flex: 1; width: 100%; cursor: grab; touch-action: none; }

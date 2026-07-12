@@ -15,6 +15,7 @@ const MARKER_COLORS: Record<string, string> = {
   prompt: '#3ddc84',
   error: '#e05555',
   question: '#f5a623',
+  blocked: '#ff4d4d',
 };
 
 export interface BlockPointerHandlers {
@@ -97,10 +98,17 @@ export const TimelineLaneRow = memo(function TimelineLaneRow({
               <rect x={x - 3} y={y - 3} width={6} height={6} fill={color} transform={`rotate(45 ${x} ${y})`} />
             ) : marker.kind === 'question' ? (
               <circle cx={x} cy={y} r={3.4} fill={color} />
+            ) : marker.kind === 'blocked' ? (
+              // hollow square: an intervention point, visually louder than the error tick
+              <rect x={x - 3} y={y - 3} width={6} height={6} fill="none" stroke={color} strokeWidth={1.6} />
             ) : (
               <rect x={x - 1} y={y - 4} width={2} height={8} fill={color} />
             )}
-            {marker.label ? <title>{marker.label}</title> : <title>{marker.kind === 'error' ? 'tool lỗi' : marker.kind}</title>}
+            {marker.label ? (
+              <title>{marker.kind === 'blocked' ? `⛔ ${marker.label}` : marker.label}</title>
+            ) : (
+              <title>{marker.kind === 'error' ? 'tool lỗi' : marker.kind === 'blocked' ? '⛔ bị chặn' : marker.kind}</title>
+            )}
           </g>
         );
       })}
