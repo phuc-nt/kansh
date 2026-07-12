@@ -7,6 +7,8 @@ import { contextLimitForModel, shortModelName } from '../../shared/model-context
 import { GitGraphSvg } from './git-graph-svg';
 import { ActivitySparkline } from './activity-sparkline';
 import { SessionSemanticSummary } from './session-semantic-summary';
+import { SessionFileActivity } from './session-file-activity';
+import { sessionLabel, sessionSubtitle } from '../session-label';
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -28,12 +30,6 @@ function ContextGauge({ contextTokens, model }: { contextTokens: number; model: 
 }
 
 const FOLLOW_THRESHOLD_PX = 40;
-
-function projectName(session: SessionSnapshot): string {
-  if (session.cwd) return session.cwd.split('/').filter(Boolean).pop() ?? session.cwd;
-  // fall back to the encoded project dir slug
-  return session.project.split('-').filter(Boolean).slice(-2).join('-');
-}
 
 function relativeTime(iso: string): string {
   const diffSec = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
@@ -184,8 +180,13 @@ export const SessionLaneCard = memo(function SessionLaneCard({
     <div className={`session-card status-${session.status}`}>
       <div className="session-header" onClick={() => setCollapsed((c) => !c)}>
         <span className={`status-dot status-dot-${session.status}`} />
-        <span className="session-project">{projectName(session)}</span>
-        <span className="session-slug">{session.slug || session.sessionId.slice(0, 8)}</span>
+        <span className="session-project" title={session.title}>{sessionLabel(session)}</span>
+        <span className="session-slug">{sessionSubtitle(session) ?? (session.slug || session.sessionId.slice(0, 8))}</span>
+        {session.currentSkill ? (
+          <span className="skill-badge" title="skill được ghi nhận cho các tool gần nhất">
+            ⚙ {session.currentSkill}
+          </span>
+        ) : null}
         {session.model ? <span className="model-badge">{shortModelName(session.model)}</span> : null}
         {session.totalTokensIn + session.totalTokensOut > 0 ? (
           <span
@@ -211,9 +212,36 @@ export const SessionLaneCard = memo(function SessionLaneCard({
         </button>
       </div>
       {toast ? <div className="jump-toast">{toast}</div> : null}
+      {session.conflicts?.length ? (
+        <div className="conflict-banner" title={session.conflicts.map((c) => c.path).join('\n')}>
+          ⚠ trùng file với session khác: {session.conflicts[0].path.split('/').pop()}
+          {session.conflicts.length > 1 ? ` +${session.conflicts.length - 1}` : ''}
+          {session.conflicts[0].otherSessionIds.map((id) => (
+            <button
+              key={id}
+              className="conflict-jump"
+              onClick={(e) => {
+                e.stopPropagation();
+                document
+                  .querySelector(`[data-session-id="${id}"]`)
+                  ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+              }}
+            >
+              → {id.slice(0, 8)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {collapsed ? null : (
         <>
           <SessionSemanticSummary session={session} nowMinuteMs={nowMinuteMs} />
+          {session.filesTouched?.length ? (
+            <SessionFileActivity
+              filesTouched={session.filesTouched}
+              cwd={session.cwd}
+              sessionId={session.sessionId}
+            />
+          ) : null}
           <button className="graph-expander" onClick={toggleGraph}>
             {graphOpen ? '▴ ẩn graph chi tiết' : '▾ xem graph chi tiết'}
           </button>

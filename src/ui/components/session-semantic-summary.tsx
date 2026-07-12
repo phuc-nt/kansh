@@ -61,7 +61,7 @@ export const SessionSemanticSummary = memo(function SessionSemanticSummary({
         </ul>
       ) : null}
 
-      {session.errorStreak >= 2 || session.loopSuspect ? (
+      {session.errorStreak >= 2 || session.loopSuspect || session.blockedCount > 0 ? (
         <div className="semantic-health">
           {session.errorStreak >= 2 ? (
             <span className="health-badge" title="số tool_result lỗi liên tiếp gần nhất (heuristic)">
@@ -71,6 +71,11 @@ export const SessionSemanticSummary = memo(function SessionSemanticSummary({
           {session.loopSuspect ? (
             <span className="health-badge" title="cùng một tool+tham số lặp lại nhiều lần gần đây (gợi ý, có thể bình thường)">
               🔁 lặp: {session.loopSuspect}
+            </span>
+          ) : null}
+          {session.blockedCount > 0 ? (
+            <span className="health-badge" title="tool bị chặn bởi permission rule hoặc hook (trong cửa sổ quan sát)">
+              ⛔ {session.blockedCount} blocked
             </span>
           ) : null}
         </div>
