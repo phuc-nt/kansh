@@ -295,6 +295,35 @@ body {
 }
 .graph-expander:hover { color: var(--text); }
 
+/* --- digest strip + panel --- */
+.digest { margin-bottom: 12px; }
+.digest-strip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.digest-strip:hover { color: var(--text); }
+.digest-table {
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.digest-table th, .digest-table td {
+  padding: 5px 14px;
+  text-align: right;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.digest-table th { color: var(--text-dim); font-weight: 400; }
+.digest-table td:first-child, .digest-table th:first-child { text-align: left; color: #fff; }
+
 /* --- global timeline view --- */
 .view-mode-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .view-mode-toggle button {

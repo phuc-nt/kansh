@@ -10,7 +10,8 @@ export type ParsedEvent = Omit<NormalizedEvent, 'seq'>;
 const LABEL_MAX = 120;
 
 /** Synthetic slash-command plumbing that would pollute the graph as fake user turns. */
-const NOISE_TEXT_RE = /^\s*<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)/;
+const NOISE_TEXT_RE =
+  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)|\[Request interrupted)/;
 
 export interface ParseContext {
   sessionId: string;

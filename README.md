@@ -16,6 +16,8 @@ Dev mode (UI hot-reload): `bun run start` in one terminal, `bun run dev` in anot
 
 ## What you see
 
+Semantic-first cards (v0.4): mỗi card trả lời trong 1 giây — 🎯 nhiệm vụ hiện tại, ▶ task đang chạy + progress bar từ TodoWrite, ⚠/🔁 health badges (lỗi liên tiếp, nghi lặp), ⏸ nguyên văn câu hỏi đang chờ + đã chờ bao lâu. Git-graph nằm sau expander "xem chi tiết". Digest strip: tokens + chi phí ước tính per project trong 24h.
+
 - One card per session (live + ended ≤24h, ended dimmed/collapsed).
 - Status per session: 🟢 running · ⏸ waiting — with the reason: "chờ permission?" vs "chờ bạn trả lời" (also counted in the page title) · ended.
 - Git-graph: user/assistant messages, tool calls colored by category (file/shell/web/agent), sub-agent branches keyed to their spawning `Task` call. Runs of plumbing events condense into `⋮ n` rows (click to expand); long silences show `⏱ idle Xm` markers.

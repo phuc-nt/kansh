@@ -31,6 +31,7 @@ const session = (events: NormalizedEvent[], extra: Partial<SessionSnapshot> = {}
   model: '',
   totalTokensIn: 0,
   totalTokensOut: 0,
+  totalTokensCacheRead: 0,
   contextTokens: 0,
   errorStreak: 0,
   events,

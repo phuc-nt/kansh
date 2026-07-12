@@ -9,6 +9,7 @@ import { SessionFilterBar, type SessionFilters } from './session-filter-bar';
 import { EventDetailSidePanel } from './event-detail-side-panel';
 import { ViewModeToggle, type ViewMode } from './view-mode-toggle';
 import { GlobalTimelineView } from './global-timeline-view';
+import { DailyDigestStrip } from './daily-digest-strip';
 
 const VIEW_MODE_KEY = 'kansh-view-mode';
 
@@ -73,6 +74,7 @@ export function DashboardGrid({ state }: { state: GraphStoreState }) {
           </span>
         )}
       </header>
+      <DailyDigestStrip sessions={state.sessions} />
       {viewMode === 'timeline' ? (
         <GlobalTimelineView sessions={visible} onJumpToSession={jumpToSession} />
       ) : visible.length === 0 ? (

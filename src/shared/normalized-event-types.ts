@@ -74,6 +74,7 @@ export interface SessionSummary {
   /** cumulative tokens across observed turns (tail-replay window only) */
   totalTokensIn: number;
   totalTokensOut: number;
+  totalTokensCacheRead: number;
   /** approximate current context size = latest main-lane turn's input + cacheRead */
   contextTokens: number;
   /** why a waiting session is waiting (heuristic) */

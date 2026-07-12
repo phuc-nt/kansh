@@ -58,6 +58,7 @@ export class SessionGraphStore {
         this.applyEvent(message.event);
         break;
       case 'session-semantics':
+        if (!this.state.sessions.some((s) => s.sessionId === message.sessionId)) break;
         this.commit({
           ...this.state,
           sessions: this.state.sessions.map((s) =>
@@ -117,6 +118,7 @@ export class SessionGraphStore {
           if (event.usage) {
             next.totalTokensIn += event.usage.in;
             next.totalTokensOut += event.usage.out;
+            next.totalTokensCacheRead += event.usage.cacheRead;
             if (event.agentId === null)
               next.contextTokens = event.usage.in + event.usage.cacheRead + event.usage.cacheCreation;
           }

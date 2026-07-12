@@ -80,6 +80,28 @@ describe('semantic layer', () => {
     expect(store.snapshotAll()[0].errorStreak).toBe(0);
   });
 
+  test('loopSuspect survives interleaved unrelated tools (A,A,A,B keeps the badge)', () => {
+    const { store } = makeStore();
+    const bash = () => ev('tool-start', { toolName: 'Bash', toolUseId: `x${seq}`, label: 'bun test' });
+    store.applyEvents(SID, [
+      bash(), bash(), bash(),
+      ev('tool-start', { toolName: 'Read', toolUseId: `r${seq}`, label: 'other.ts' }),
+    ]);
+    // one unrelated tool must NOT clear the badge — Bash still holds 3 ring slots
+    expect(store.snapshotAll()[0].loopSuspect).toContain('Bash');
+  });
+
+  test('pendingQuestion cleared by a subsequent user message (interrupt path)', () => {
+    const { store } = makeStore();
+    store.applyEvents(SID, [
+      ev('tool-start', { toolName: 'AskUserQuestion', toolUseId: 'q9', question: 'Chọn gì?' }),
+    ]);
+    expect(store.snapshotAll()[0].pendingQuestion).toBe('Chọn gì?');
+    // user interrupts and types something new — no tool_result ever lands
+    store.applyEvents(SID, [ev('user-message', { label: 'làm cái khác đi' })]);
+    expect(store.snapshotAll()[0].pendingQuestion).toBeUndefined();
+  });
+
   test('loopSuspect fires on >=3 identical signatures in the window, clears on rotation', () => {
     const { store } = makeStore();
     const bash = () => ev('tool-start', { toolName: 'Bash', toolUseId: `x${seq}`, label: 'bun test' });

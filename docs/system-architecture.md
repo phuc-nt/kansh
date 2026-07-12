@@ -1,6 +1,12 @@
 # Kansh System Architecture
 
-Updated: 2026-07-12 (v0.3.0 — wave 2 "New Perspectives" complete)
+Updated: 2026-07-12 (v0.4.0 — "Semantic Layer" complete)
+
+## v0.4 additions (mirror → analyzer)
+
+- **Semantic extraction** (parser+store): `mission` (latest real user prompt), `todos` (latest main-lane TodoWrite input), `pendingQuestion` (AskUserQuestion in flight — cleared by its tool-end OR any subsequent user message; interrupts don't always produce a tool_result), `errorStreak` (consecutive `tool_result.is_error`), `loopSuspect` (same toolName+label ≥3 in ring of 15 — clear decision counts the SUSPECT's signature, not the incoming event's). Broadcast change-only via `session-semantics` (NUL-separated fingerprint).
+- **Semantic-first cards**: mission/progress-bar/health-badges/pending-question là thân card; git-graph behind per-session expander (localStorage). Badges là heuristic — màu nhẹ, tooltip.
+- **Digest**: client-side rollup per project (tokens in/out/cacheRead, active-time với cache theo events identity, cost ước tính từ `src/shared/model-pricing.ts` — unknown model → không hiện $; chưa gồm cache-write premium).
 
 ## v0.3 additions
 
