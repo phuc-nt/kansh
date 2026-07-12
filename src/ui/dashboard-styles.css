@@ -232,6 +232,71 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* --- global timeline view --- */
+.view-mode-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.view-mode-toggle button {
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border: none;
+  padding: 3px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.view-mode-toggle button.active { background: var(--bg-card-header); color: #fff; }
+
+.timeline-view { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-card-header);
+  border-bottom: 1px solid var(--border);
+}
+.timeline-controls button {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.timeline-controls button.active { border-color: var(--running); color: var(--running); }
+.live-indicator { color: var(--running); font-size: 12px; }
+.timeline-hint { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+
+.timeline-body { display: flex; }
+.timeline-labels { width: 190px; flex-shrink: 0; border-right: 1px solid var(--border); }
+.timeline-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.timeline-label:hover { background: var(--bg-card-header); }
+.timeline-label-text { font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; }
+.timeline-wait { color: var(--waiting); margin-left: auto; }
+.timeline-label.status-ended { opacity: 0.5; }
+
+.timeline-svg { flex: 1; width: 100%; cursor: grab; touch-action: none; }
+.timeline-svg:active { cursor: grabbing; }
+.axis-gridline { stroke: #232a37; stroke-width: 1; }
+.axis-label { font-size: 10px; fill: var(--text-dim); }
+.lane-track-line { stroke: #1d2430; stroke-width: 1; }
+.activity-block { opacity: 0.85; }
+.activity-block:hover { opacity: 1; }
+.branch-span { fill: #ff6b9d; opacity: 0.55; }
+.branch-open { opacity: 0.9; animation: dot-blink 1.6s ease-in-out infinite; }
+.now-line { stroke: var(--running); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.clip-hint { font-size: 10px; fill: var(--text-dim); }
+
 @keyframes pulse-ring {
   0% { transform: scale(0.7); opacity: 0.5; }
   100% { transform: scale(1.8); opacity: 0; }

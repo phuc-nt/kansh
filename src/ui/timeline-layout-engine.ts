@@ -150,7 +150,19 @@ function layoutLane(
       }
     }
   }
-  const visibleBranches = branches
+  // Spans with no observed end: genuinely open only while the session runs
+  // AND the spawn is near the activity tip. An old spawn with lots of later
+  // activity means its end fell outside the replayed tail — render a short
+  // tick instead of a misleading full-width bar.
+  const STALE_OPEN_MS = 10 * 60_000;
+  const resolvedBranches = branches.map((b) => {
+    if (b.endMs !== null) return b;
+    // end unseen + lots of later activity = end fell outside the tail → tick
+    if (lastMs - b.startMs > STALE_OPEN_MS) return { ...b, endMs: b.startMs + 60_000 };
+    if (session.status !== 'running') return { ...b, endMs: Math.min(lastMs, window.endMs) };
+    return b; // truly open: extends to the live edge
+  });
+  const visibleBranches = resolvedBranches
     .filter((b) => (b.endMs ?? nowMs) >= window.startMs && b.startMs <= window.endMs)
     .map((b) => ({
       ...b,
@@ -178,13 +190,16 @@ function categoryOf(event: NormalizedEvent): ToolCategory {
 }
 
 function dominant(categories: Map<ToolCategory, number>): ToolCategory {
+  // prefer tool categories over 'other' (messages) — a block with 3 Reads and
+  // 5 assistant messages is file work, not "other"
   let best: ToolCategory = 'other';
   let bestCount = -1;
   for (const [category, count] of categories) {
+    if (category === 'other') continue;
     if (count > bestCount) {
       best = category;
       bestCount = count;
     }
   }
-  return best;
+  return bestCount > 0 ? best : 'other';
 }
