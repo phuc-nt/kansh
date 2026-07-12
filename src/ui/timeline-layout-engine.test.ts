@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import type { NormalizedEvent, SessionSnapshot } from '../shared/normalized-event-types';
-import { layoutTimeline } from './timeline-layout-engine';
+import { computeAttention, layoutTimeline } from './timeline-layout-engine';
 
 const T0 = 1700000000000;
 const MIN = 60_000;
@@ -159,6 +159,93 @@ describe('layoutTimeline', () => {
     const late = session([ev('user-message', T0 + 30 * MIN, { sessionId: 'late' })], { sessionId: 'late', cwd: '/tmp/late' });
     const lanes = layoutTimeline([late, early], WINDOW, WINDOW.endMs);
     expect(lanes.map((l) => l.sessionId)).toEqual(['early', 'late']);
+  });
+
+  test('markers: prompt/error/question land at the right ms with labels', () => {
+    const events = [
+      ev('user-message', T0 + 2 * MIN, { label: 'làm task X' }),
+      ev('tool-end', T0 + 3 * MIN, { toolUseId: 'e1', isError: true }),
+      ev('tool-start', T0 + 4 * MIN, { toolName: 'AskUserQuestion', toolUseId: 'q1', question: 'Chọn gì?' }),
+      ev('user-message', T0 + 5 * MIN, { agentId: 'sub', label: 'subagent prompt — không tính' }),
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.markers).toHaveLength(3);
+    expect(lane.markers.map((m) => m.kind)).toEqual(['prompt', 'error', 'question']);
+    expect(lane.markers[0].label).toBe('làm task X');
+    expect(lane.markers[0].ms).toBe(T0 + 2 * MIN);
+    expect(lane.markers[2].label).toBe('Chọn gì?');
+  });
+
+  test('markers outside window excluded; cap keeps newest 80', () => {
+    const events = [
+      ev('user-message', T0 - 10 * MIN, { label: 'trước window' }),
+      ...Array.from({ length: 90 }, (_, i) => ev('user-message', T0 + i * 20_000, { label: `p${i}` })),
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.markers.length).toBe(80);
+    expect(lane.markers[lane.markers.length - 1].label).toBe('p89');
+    expect(lane.markers.some((m) => m.label === 'trước window')).toBe(false);
+  });
+
+  test('waiting stretch inferred from gap before a prompt; dense turnaround has none', () => {
+    const events = [
+      ev('assistant-message', T0 + 2 * MIN, { label: 'xong việc' }),
+      ev('user-message', T0 + 12 * MIN, { label: 'việc mới' }), // 10min gap → waited
+      ev('assistant-message', T0 + 12 * MIN + 30_000, { label: 'ok' }),
+      ev('user-message', T0 + 13 * MIN, { label: 'tiếp' }), // 30s gap → none
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.waitingStretches).toHaveLength(1);
+    expect(lane.waitingStretches[0]).toMatchObject({
+      startMs: T0 + 2 * MIN,
+      endMs: T0 + 12 * MIN,
+      inferred: true,
+    });
+  });
+
+  test('live waiting session gets a non-inferred stretch to now', () => {
+    const nowMs = T0 + 30 * MIN;
+    const events = [ev('assistant-message', T0 + 5 * MIN, { label: 'done' })];
+    const [lane] = layoutTimeline(
+      [session(events, { status: 'waiting', waitingReason: 'user-turn' })],
+      { startMs: T0, endMs: nowMs },
+      nowMs,
+    );
+    const live = lane.waitingStretches.find((w) => !w.inferred);
+    expect(live).toMatchObject({ startMs: T0 + 5 * MIN, endMs: nowMs });
+  });
+
+  test('block enrichment: dominant tools and token sums', () => {
+    const events = [
+      ev('tool-start', T0 + MIN, { toolName: 'Read', toolUseId: 'a' }),
+      ev('tool-start', T0 + MIN + 5000, { toolName: 'Read', toolUseId: 'b' }),
+      ev('tool-start', T0 + MIN + 10_000, { toolName: 'Bash', toolUseId: 'c' }),
+      ev('assistant-message', T0 + MIN + 15_000, {
+        label: 'x',
+        usage: { in: 100, out: 200, cacheRead: 0, cacheCreation: 0 },
+      }),
+    ];
+    const [lane] = layoutTimeline([session(events)], WINDOW, WINDOW.endMs);
+    expect(lane.blocks[0].dominantTools).toEqual(['Read', 'Bash']);
+    expect(lane.blocks[0].tokensIn).toBe(100);
+    expect(lane.blocks[0].tokensOut).toBe(200);
+  });
+
+  test('attention: points sorted across sessions, switchCount counts transitions', () => {
+    const a = session(
+      [
+        ev('user-message', T0 + 1 * MIN, { sessionId: 'A', label: 'a1' }),
+        ev('user-message', T0 + 5 * MIN, { sessionId: 'A', label: 'a2' }),
+      ],
+      { sessionId: 'A', cwd: '/w/a' },
+    );
+    const b = session(
+      [ev('user-message', T0 + 3 * MIN, { sessionId: 'B', label: 'b1' })],
+      { sessionId: 'B', cwd: '/w/b' },
+    );
+    const attention = computeAttention([a, b], WINDOW);
+    expect(attention.points.map((p) => p.sessionId)).toEqual(['A', 'B', 'A']);
+    expect(attention.switchCount).toBe(2); // A→B, B→A
   });
 
   test('block cap drops oldest and reports count', () => {
