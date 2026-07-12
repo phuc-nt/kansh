@@ -49,7 +49,7 @@ async function buildFixture(): Promise<void> {
 }
 
 await buildFixture();
-const fixtureStore = new SessionStateStore({ onSessionAdded: () => {}, onEvent: () => {}, onStatusChange: () => {} });
+const fixtureStore = new SessionStateStore({ onSessionAdded: () => {}, onEvent: () => {}, onStatusChange: () => {}, onSemanticsChange: () => {} });
 const fixtureIngestion = new SessionTranscriptIngestion(fixtureStore, FIXTURE_ROOT);
 await fixtureIngestion.start();
 fixtureIngestion.stop();
@@ -77,7 +77,7 @@ await rm(FIXTURE_ROOT, { recursive: true, force: true });
 console.log(`fixture: ${fx?.events.length ?? 0} events, assertions ${failures.length === 0 ? 'ok' : 'FAILED'}`);
 
 // ---------- Part B: real local data ----------
-const store = new SessionStateStore({ onSessionAdded: () => {}, onEvent: () => {}, onStatusChange: () => {} });
+const store = new SessionStateStore({ onSessionAdded: () => {}, onEvent: () => {}, onStatusChange: () => {}, onSemanticsChange: () => {} });
 const ingestion = new SessionTranscriptIngestion(store);
 await ingestion.start();
 
@@ -99,6 +99,13 @@ const withModel = sessions.filter((s) => s.model !== '');
 console.log(`sessions with tokens: ${withTokens.length}, with model: ${withModel.length}, ctx sample: ${sessions[0]?.contextTokens ?? 0}`);
 assert(withTokens.length > 0, 'real: no session accumulated any token usage');
 assert(withModel.length > 0, 'real: no session captured a model name');
+
+// semantic layer must extract real content from live transcripts
+const withMission = sessions.filter((s) => (s.mission ?? '').length > 0);
+const withTodos = sessions.filter((s) => (s.todos?.length ?? 0) > 0);
+console.log(`semantics: mission=${withMission.length}/${sessions.length}, todos=${withTodos.length}, streak sample=${sessions[0]?.errorStreak}`);
+assert(withMission.length > 0, 'real: no session extracted a mission');
+assert(withTodos.length > 0, 'real: no session extracted todos (TodoWrite is ubiquitous)');
 
 const spawns = sessions.flatMap((s) => s.events.filter((e) => e.kind === 'subagent-spawn'));
 const spawnsWithLink = spawns.filter((e) => e.toolUseId && e.agentType);

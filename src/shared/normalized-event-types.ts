@@ -39,6 +39,19 @@ export interface NormalizedEvent {
   usage?: { in: number; out: number; cacheRead: number; cacheCreation: number };
   /** model that produced this assistant turn */
   model?: string;
+  /** tool_result reported is_error (tool-end only) */
+  isError?: boolean;
+  /** TodoWrite tool-start only: the task list being written */
+  todos?: TodoItem[];
+  /** AskUserQuestion tool-start only: first question's text */
+  question?: string;
+}
+
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  /** present-tense label shown while in progress */
+  activeForm?: string;
 }
 
 export type SessionStatus = 'running' | 'waiting' | 'ended';
@@ -65,6 +78,16 @@ export interface SessionSummary {
   contextTokens: number;
   /** why a waiting session is waiting (heuristic) */
   waitingReason?: 'permission' | 'user-turn';
+  /** latest real user prompt on the main lane (the session's current task) */
+  mission?: string;
+  /** latest TodoWrite list from the main lane */
+  todos?: TodoItem[];
+  /** question currently awaiting the user's answer (AskUserQuestion in flight) */
+  pendingQuestion?: string;
+  /** consecutive error tool-results at the activity tip */
+  errorStreak: number;
+  /** repeated identical tool signature detected recently (possible stuck loop) */
+  loopSuspect?: string;
 }
 
 export interface SessionSnapshot extends SessionSummary {
@@ -82,4 +105,13 @@ export type ServerMessage =
       lastActivityAt: string;
       waitingReason?: 'permission' | 'user-turn';
     }
-  | { type: 'session-added'; session: SessionSnapshot };
+  | { type: 'session-added'; session: SessionSnapshot }
+  | {
+      type: 'session-semantics';
+      sessionId: string;
+      mission?: string;
+      todos?: TodoItem[];
+      pendingQuestion?: string;
+      errorStreak: number;
+      loopSuspect?: string;
+    };

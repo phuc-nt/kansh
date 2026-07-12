@@ -21,6 +21,8 @@ async function main() {
     onEvent: (event) => broadcast({ type: 'event', event }),
     onStatusChange: (sessionId, status, lastActivityAt, waitingReason) =>
       broadcast({ type: 'session-status', sessionId, status, lastActivityAt, waitingReason }),
+    onSemanticsChange: (sessionId, semantics) =>
+      broadcast({ type: 'session-semantics', sessionId, ...semantics }),
   });
 
   const detailReader = new EventDetailReader();

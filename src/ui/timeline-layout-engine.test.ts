@@ -32,6 +32,7 @@ const session = (events: NormalizedEvent[], extra: Partial<SessionSnapshot> = {}
   totalTokensIn: 0,
   totalTokensOut: 0,
   contextTokens: 0,
+  errorStreak: 0,
   events,
   ...extra,
 });

@@ -57,6 +57,23 @@ export class SessionGraphStore {
       case 'event':
         this.applyEvent(message.event);
         break;
+      case 'session-semantics':
+        this.commit({
+          ...this.state,
+          sessions: this.state.sessions.map((s) =>
+            s.sessionId === message.sessionId
+              ? {
+                  ...s,
+                  mission: message.mission,
+                  todos: message.todos,
+                  pendingQuestion: message.pendingQuestion,
+                  errorStreak: message.errorStreak,
+                  loopSuspect: message.loopSuspect,
+                }
+              : s,
+          ),
+        });
+        break;
       case 'session-status':
         this.commit({
           ...this.state,

@@ -2,7 +2,7 @@
 // Defensive by design: anything unrecognized yields no events instead of throwing.
 // One record can yield several events (e.g. an assistant turn with multiple tool_use blocks).
 
-import type { NormalizedEvent } from '../shared/normalized-event-types';
+import type { NormalizedEvent, TodoItem } from '../shared/normalized-event-types';
 
 /** Parser output: `seq` is assigned later by the state store in apply order. */
 export type ParsedEvent = Omit<NormalizedEvent, 'seq'>;
@@ -39,6 +39,29 @@ function truncate(text: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/** TodoWrite input.todos → validated TodoItem[] (cap 20). Bad shape → undefined. */
+function parseTodosInput(input: unknown): TodoItem[] | undefined {
+  if (!isRecord(input) || !Array.isArray(input.todos)) return undefined;
+  const todos: TodoItem[] = [];
+  for (const raw of input.todos.slice(0, 20)) {
+    if (!isRecord(raw) || typeof raw.content !== 'string') continue;
+    const status = raw.status === 'in_progress' || raw.status === 'completed' ? raw.status : 'pending';
+    todos.push({
+      content: truncate(raw.content),
+      status,
+      activeForm: typeof raw.activeForm === 'string' ? truncate(raw.activeForm) : undefined,
+    });
+  }
+  return todos.length > 0 ? todos : undefined;
+}
+
+/** AskUserQuestion input → first question text. */
+function parseQuestionInput(input: unknown): string | undefined {
+  if (!isRecord(input) || !Array.isArray(input.questions)) return undefined;
+  const first = input.questions[0];
+  return isRecord(first) && typeof first.question === 'string' ? truncate(first.question) : undefined;
 }
 
 /** Short label for a tool call from its input (file path, command, prompt...). */
@@ -79,7 +102,13 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
       for (const block of content) {
         if (!isRecord(block)) continue;
         if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-          events.push({ ...base, uuid: `${uuid}:${block.tool_use_id}`, kind: 'tool-end', toolUseId: block.tool_use_id });
+          events.push({
+            ...base,
+            uuid: `${uuid}:${block.tool_use_id}`,
+            kind: 'tool-end',
+            toolUseId: block.tool_use_id,
+            isError: block.is_error === true || undefined,
+          });
         } else if (block.type === 'text' && typeof block.text === 'string') {
           userText += block.text;
         }
@@ -118,13 +147,17 @@ export function parseTranscriptRecord(record: unknown, ctx: ParseContext): Parse
     for (const block of content) {
       if (!isRecord(block)) continue;
       if (block.type === 'tool_use' && typeof block.id === 'string') {
+        const toolName = typeof block.name === 'string' ? block.name : 'unknown';
         events.push({
           ...base,
           uuid: `${uuid}:${block.id}`,
           kind: 'tool-start',
-          toolName: typeof block.name === 'string' ? block.name : 'unknown',
+          toolName,
           toolUseId: block.id,
           label: toolInputLabel(block.input),
+          // semantic payloads: task list / pending question ride the event
+          todos: toolName === 'TodoWrite' ? parseTodosInput(block.input) : undefined,
+          question: toolName === 'AskUserQuestion' ? parseQuestionInput(block.input) : undefined,
         });
       } else if (block.type === 'text' && typeof block.text === 'string') {
         assistantText += block.text;
