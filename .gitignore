@@ -1,0 +1,29 @@
+# --- secrets & credentials (never commit) ---
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*credentials*
+*secret*
+.auth-session.json
+cookies.json
+
+# --- MK dev toolkit & process artifacts (local-only) ---
+.claude/
+CLAUDE.md
+AGENTS.md
+plans/
+docs/journals/
+
+# --- build & deps ---
+node_modules/
+dist/
+
+# --- test/tooling residue ---
+.smoke-fixture-projects/
+.browser-session.json
+
+# --- OS / editor ---
+.DS_Store
+*.log
