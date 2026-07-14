@@ -10,9 +10,9 @@ Run many Claude Code sessions at once? kansh auto-detects every one on your mach
 - ⚠️ **Conflict alerts** — a red banner when two live sessions edit the same file, so agents don't step on each other.
 - 🔒 **Read-only & local** — never writes to `~/.claude`, binds to `127.0.0.1` only, no telemetry.
 
-<!-- Add a screenshot at docs/images/dashboard.png and uncomment:
-![kansh dashboard](docs/images/dashboard.png)
--->
+![kansh cards view](docs/images/dashboard.png)
+
+<sub>Cards view — mission, workflow map (phases + sub-agents), health badges, and file activity per session.</sub>
 
 ## Quick start
 
@@ -25,6 +25,10 @@ bun run start          # → http://127.0.0.1:4777
 ```
 
 Requires [Bun](https://bun.sh) ≥ 1.3 and [Claude Code](https://claude.com/claude-code) (macOS). Zero config — no hooks, no plugins.
+
+![kansh timeline view](docs/images/timeline.png)
+
+<sub>Timeline view — every session as a swimlane on one shared clock, with prompt/error/blocked markers, waiting stretches, and an attention ribbon.</sub>
 
 ## Documentation
 
