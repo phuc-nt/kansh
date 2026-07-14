@@ -58,8 +58,8 @@ export class SessionTranscriptIngestion {
   private inFlight = new Map<string, Promise<void>>();
   /** per-file usage dedupe cells (message.id spans multiple records) */
   private usageDedupeByPath = new Map<string, { lastMessageId: string }>();
-  /** sessionId -> transcript mtime at last workflow scan (re-scan only on change) */
-  private workflowScanMtime = new Map<string, number>();
+  /** sessionId -> `transcriptMtime:subagentsMtime` gate at last workflow scan */
+  private workflowScanMtime = new Map<string, string>();
 
   constructor(
     private store: SessionStateStore,
@@ -111,8 +111,18 @@ export class SessionTranscriptIngestion {
     session: { sessionId: string; transcriptPath: string; subagentsDir: string; mtimeMs: number },
     quiet: boolean,
   ): Promise<void> {
-    if (this.workflowScanMtime.get(session.sessionId) === session.mtimeMs) return;
-    this.workflowScanMtime.set(session.sessionId, session.mtimeMs);
+    // Gate on BOTH the transcript mtime and the subagents dir mtime: a new
+    // agent-*.jsonl can land just after the main tool_use append, so the
+    // transcript mtime alone would miss the fresh spawn until the next append.
+    let subMtime = 0;
+    try {
+      subMtime = (await stat(session.subagentsDir)).mtimeMs;
+    } catch {
+      // no subagents dir yet — fine, gate on transcript mtime only
+    }
+    const gate = `${session.mtimeMs}:${subMtime}`;
+    if (this.workflowScanMtime.get(session.sessionId) === gate) return;
+    this.workflowScanMtime.set(session.sessionId, gate);
     try {
       const workflow = await scanWorkflowTimeline(session.transcriptPath, session.subagentsDir);
       this.store.applyWorkflow(session.sessionId, workflow, quiet);

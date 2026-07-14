@@ -153,8 +153,9 @@ export const SessionWorkflowMap = memo(function SessionWorkflowMap({
                     className="workflow-subagent-chip"
                     textAnchor="middle"
                   >
-                    ⤷ {shortAgent(sa.agentType)} ×{sa.count}
+                    {/* title first: SVG only renders it as a tooltip as the first child */}
                     <title>{`${sa.agentType} ×${sa.count}`}</title>
+                    ⤷ {shortAgent(sa.agentType)} ×{sa.count}
                   </text>
                 ))}
                 {node.hiddenSubagentTypes > 0 ? (

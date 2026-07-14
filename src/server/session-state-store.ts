@@ -389,8 +389,11 @@ export class SessionStateStore {
       state.blockedCount,
       [...state.filesTouched.values()].map((ft) => `${ft.path}:${ft.edits}.${ft.reads}`).join(','),
       JSON.stringify(state.conflicts ?? null),
-      // workflow: cheap signature = phase count + last skill + spawn count
-      state.workflow ? `${state.workflow.phases.length}:${state.workflow.phases.at(-1)?.skill}:${state.workflow.spawns.length}` : '',
+      // workflow: full skill sequence (bounded at 500) so a mid-sequence reorder
+      // with unchanged counts still broadcasts; spawn count covers the tie layer
+      state.workflow
+        ? `${state.workflow.phases.map((p) => p.skill).join('>')}:${state.workflow.spawns.length}`
+        : '',
     ].join('\u0000');
     if (key === state.lastSemanticsKey) return;
     state.lastSemanticsKey = key;
