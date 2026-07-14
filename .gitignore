@@ -6,11 +6,19 @@
 *.p12
 *credentials*
 *secret*
+*.token
 .auth-session.json
 cookies.json
+.mcp.json
 
-# --- MK dev toolkit & process artifacts (local-only) ---
+# --- MK / CK dev toolkit & its artifacts (local-only, never publish) ---
 .claude/
+.mk/
+.ck/
+.mk.json
+.ck.json
+.mkignore
+.ckignore
 CLAUDE.md
 AGENTS.md
 plans/

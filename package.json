@@ -2,6 +2,11 @@
   "name": "kansh",
   "version": "0.7.0",
   "description": "Local read-only monitor for Claude Code sessions \u2014 live git-graph timeline of agents, sub-agents, and tool calls",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phuc-nt/kansh"
+  },
   "type": "module",
   "scripts": {
     "start": "bun run src/server/index.ts",
