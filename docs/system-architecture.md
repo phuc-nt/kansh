@@ -1,6 +1,14 @@
 # Kansh System Architecture
 
-Updated: 2026-07-12 (v0.6.0 — "Provenance & Conflict" complete)
+Updated: 2026-07-14 (v0.7.0 — "Workflow Map" complete)
+
+## v0.7 additions (agentic workflow map)
+
+- **Whole-session workflow scan** (`src/server/workflow-timeline-scanner.ts`): the 512KB replay tail of a large session (18MB) holds ZERO main-lane `attributionSkill` records — they sit before the tail window — so the map needs a SEPARATE light full-file pass. Streams the transcript, substring-prefilters lines (`attributionSkill`) before JSON-parse, and extracts only the compact `(skill, ts)` main-lane transition sequence (consecutive repeats collapsed) + subagent spawn refs (`agentType`, `ts` from the agent jsonl birthtime, `depth` from meta.json). Capped (500 phases / 1000 spawns), read-only, never breaks ingestion. Re-scanned only when the transcript mtime changes (gated in `refreshWorkflow`). Result rides `session.workflow` (contract: optional `WorkflowTimeline`).
+- **Pure graph engine** (`src/ui/workflow-graph-engine.ts`, fixture-first): `WorkflowTimeline → WorkflowGraph`. Collapses raw skills into a fixed typed set (brainstorm / mk-plan / cook / review [chrome-devtools, react-best-practices, *review*, fix] / research / journal / other); nodes carry visits + active flag; directed edges weighted by transition count (thick = many build loops); `loopCount` = revisits. Subagents tie to the phase active at spawn time (best-effort — meta.toolUseId does NOT map to the parent Task tool_use id, verified; timestamp is the only tie), grouped by agentType (cap 8 + overflow).
+- **Per-card map** (`src/ui/components/session-workflow-map.tsx`): collapsed to a `⚙ N phases · M agents · ↻ K loops` summary by default (card is already tall), expander localStorage-persisted. Expanded = small SVG: phase pills (fixed `phase-color-palette.ts`, active pill pulses), curved arrowed edges thickened by weight with `×N` labels, cook's subagent chips beneath its node. Non-MK / empty session renders nothing. Hover tooltips (visits, duration, tokens, full agentType).
+
+## v0.6 additions (provenance & conflict)
 
 ## v0.6 additions (provenance & conflict)
 
