@@ -28,7 +28,8 @@ export const SessionWorkflowMap = memo(function SessionWorkflowMap({
 }) {
   const graph = useMemo(() => buildWorkflowGraph(session.workflow), [session.workflow]);
   const openKey = `kansh-workflow-open:${session.sessionId}`;
-  const [open, setOpen] = useState(() => localStorage.getItem(openKey) === '1');
+  // open by default; only a stored '0' (user collapsed it) keeps it closed
+  const [open, setOpen] = useState(() => localStorage.getItem(openKey) !== '0');
 
   // non-MK / empty session → render nothing so plain sessions stay clean
   if (graph.phaseCount === 0) return null;
