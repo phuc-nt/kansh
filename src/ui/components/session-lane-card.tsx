@@ -8,6 +8,7 @@ import { GitGraphSvg } from './git-graph-svg';
 import { ActivitySparkline } from './activity-sparkline';
 import { SessionSemanticSummary } from './session-semantic-summary';
 import { SessionFileActivity } from './session-file-activity';
+import { SessionWorkflowMap } from './session-workflow-map';
 import { sessionLabel, sessionSubtitle } from '../session-label';
 
 function formatTokens(n: number): string {
@@ -235,6 +236,7 @@ export const SessionLaneCard = memo(function SessionLaneCard({
       {collapsed ? null : (
         <>
           <SessionSemanticSummary session={session} nowMinuteMs={nowMinuteMs} />
+          <SessionWorkflowMap session={session} />
           {session.filesTouched?.length ? (
             <SessionFileActivity
               filesTouched={session.filesTouched}
