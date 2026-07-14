@@ -16,6 +16,7 @@ import { JsonlIncrementalTailer } from './jsonl-incremental-tailer';
 import { extractSessionMeta, parseTranscriptRecord } from './transcript-record-parser';
 import type { SessionStateStore } from './session-state-store';
 import type { EventDetailReader } from './event-detail-reader';
+import { scanWorkflowTimeline } from './workflow-timeline-scanner';
 
 /** Sessions whose transcript changed within this window are loaded. */
 const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -57,6 +58,8 @@ export class SessionTranscriptIngestion {
   private inFlight = new Map<string, Promise<void>>();
   /** per-file usage dedupe cells (message.id spans multiple records) */
   private usageDedupeByPath = new Map<string, { lastMessageId: string }>();
+  /** sessionId -> transcript mtime at last workflow scan (re-scan only on change) */
+  private workflowScanMtime = new Map<string, number>();
 
   constructor(
     private store: SessionStateStore,
@@ -96,8 +99,26 @@ export class SessionTranscriptIngestion {
         await this.ingestFile(subPath, quiet);
       }
       await this.ingestFile(session.transcriptPath, quiet);
+      // Whole-session workflow scan (independent of the event window). Gated on
+      // the transcript mtime so a big file is re-scanned only when it grows.
+      await this.refreshWorkflow(session, quiet);
     }
     this.evictExpiredSessions();
+  }
+
+  /** Re-scan the full transcript for the workflow timeline when it has changed. */
+  private async refreshWorkflow(
+    session: { sessionId: string; transcriptPath: string; subagentsDir: string; mtimeMs: number },
+    quiet: boolean,
+  ): Promise<void> {
+    if (this.workflowScanMtime.get(session.sessionId) === session.mtimeMs) return;
+    this.workflowScanMtime.set(session.sessionId, session.mtimeMs);
+    try {
+      const workflow = await scanWorkflowTimeline(session.transcriptPath, session.subagentsDir);
+      this.store.applyWorkflow(session.sessionId, workflow, quiet);
+    } catch {
+      // scan failure must never break ingestion — the map just stays stale
+    }
   }
 
   /** Release all per-session state for sessions the store no longer holds. */
@@ -111,6 +132,7 @@ export class SessionTranscriptIngestion {
       }
       this.sessionPaths.delete(sessionId);
       this.seenToolEnds.delete(sessionId);
+      this.workflowScanMtime.delete(sessionId);
       for (const [toolUseId, spawn] of this.openSubagentSpawns) {
         if (spawn.sessionId === sessionId) this.openSubagentSpawns.delete(toolUseId);
       }

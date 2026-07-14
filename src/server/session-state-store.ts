@@ -10,6 +10,7 @@ import type {
   SessionSnapshot,
   SessionStatus,
   TodoItem,
+  WorkflowTimeline,
 } from '../shared/normalized-event-types';
 import type { ParsedEvent, SessionMetaFields } from './transcript-record-parser';
 import type { LivenessSample } from './session-liveness-poller';
@@ -64,6 +65,8 @@ interface SessionState {
   /** main-lane tool-starts without a skill remaining before currentSkill expires */
   skillTtl: number;
   blockedCount: number;
+  /** whole-session workflow trace (server-scanned, not from the event window) */
+  workflow?: WorkflowTimeline;
 }
 
 export interface StoreListeners {
@@ -88,6 +91,7 @@ export interface StoreListeners {
       conflicts?: FileConflict[];
       currentSkill?: string;
       blockedCount: number;
+      workflow?: WorkflowTimeline;
     },
   ) => void;
 }
@@ -146,6 +150,14 @@ export class SessionStateStore {
     if (meta.aiTitle) state.aiTitle = meta.aiTitle;
     if (meta.customTitle) state.customTitle = meta.customTitle;
     if (meta.aiTitle || meta.customTitle) this.emitSemanticsIfChanged(state, quiet);
+  }
+
+  /** Attach the whole-session workflow trace (server-scanned); broadcast on change. */
+  applyWorkflow(sessionId: string, workflow: WorkflowTimeline | undefined, quiet = false): void {
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
+    state.workflow = workflow;
+    this.emitSemanticsIfChanged(state, quiet);
   }
 
   /** Assign seq numbers and append; broadcasts unless quiet (startup replay). */
@@ -377,6 +389,8 @@ export class SessionStateStore {
       state.blockedCount,
       [...state.filesTouched.values()].map((ft) => `${ft.path}:${ft.edits}.${ft.reads}`).join(','),
       JSON.stringify(state.conflicts ?? null),
+      // workflow: cheap signature = phase count + last skill + spawn count
+      state.workflow ? `${state.workflow.phases.length}:${state.workflow.phases.at(-1)?.skill}:${state.workflow.spawns.length}` : '',
     ].join('\u0000');
     if (key === state.lastSemanticsKey) return;
     state.lastSemanticsKey = key;
@@ -392,6 +406,7 @@ export class SessionStateStore {
       conflicts: state.conflicts,
       currentSkill: state.currentSkill,
       blockedCount: state.blockedCount,
+      workflow: state.workflow,
     });
   }
 

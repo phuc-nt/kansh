@@ -68,6 +68,18 @@ export interface FileConflict {
   otherSessionIds: string[];
 }
 
+/**
+ * Compact whole-session workflow trace, scanned server-side from the full
+ * transcript (NOT the event window — a large session's replay tail holds no
+ * main-lane skill records). Feeds the per-card workflow map.
+ */
+export interface WorkflowTimeline {
+  /** main-lane skill phases in order (consecutive repeats already collapsed) */
+  phases: { skill: string; ts: string }[];
+  /** subagent spawns: type + when, to tie each to the phase active at spawn */
+  spawns: { agentType: string; ts: string; depth: number }[];
+}
+
 export interface TodoItem {
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
@@ -120,6 +132,8 @@ export interface SessionSummary {
   currentSkill?: string;
   /** count of blocked tools (permission denials / hook preventions) */
   blockedCount: number;
+  /** whole-session MK workflow trace (phases + subagent spawns) for the card map */
+  workflow?: WorkflowTimeline;
 }
 
 export interface SessionSnapshot extends SessionSummary {
@@ -151,4 +165,5 @@ export type ServerMessage =
       conflicts?: FileConflict[];
       currentSkill?: string;
       blockedCount: number;
+      workflow?: WorkflowTimeline;
     };

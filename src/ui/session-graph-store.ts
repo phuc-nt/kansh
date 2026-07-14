@@ -75,6 +75,7 @@ export class SessionGraphStore {
                   conflicts: message.conflicts,
                   currentSkill: message.currentSkill,
                   blockedCount: message.blockedCount,
+                  workflow: message.workflow,
                 }
               : s,
           ),
