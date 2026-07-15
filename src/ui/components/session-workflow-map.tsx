@@ -8,7 +8,7 @@
 // subagent chips fade in when spawned. The playhead advances on an INTERVAL
 // (not rAF) so it keeps moving in a backgrounded tab — the monitor's default.
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { SessionSnapshot } from '../../shared/normalized-event-types';
 import { buildWorkflowGraph, type PhaseKey } from '../workflow-graph-engine';
 import { PHASE_COLOR } from '../phase-color-palette';
@@ -54,15 +54,12 @@ export const SessionWorkflowMap = memo(function SessionWorkflowMap({
   );
 
   // interval playhead: keeps advancing even when the tab is backgrounded (rAF
-  // does not fire there). Stops at the task end.
-  const lastTickRef = useRef(0);
+  // does not fire there). Advances by the nominal tick × speed (a synthetic
+  // replay clock, not wall-synced) and stops at the task end.
   useEffect(() => {
     if (!playing) return;
-    lastTickRef.current = 0; // reset delta baseline on (re)start
     const timer = setInterval(() => {
       setPlayheadMs((prev) => {
-        // advance by wall time × speed; use TICK_MS as the delta (interval is
-        // approximately periodic — good enough for a replay scrubber)
         const next = prev + TICK_MS * speed;
         if (next >= replay.durationMs) {
           setPlaying(false);
@@ -75,6 +72,18 @@ export const SessionWorkflowMap = memo(function SessionWorkflowMap({
   }, [playing, speed, replay.durationMs]);
 
   const state = useMemo(() => replayStateAt(replay, playheadMs), [replay, playheadMs]);
+  // subagents shown in replay = only those revealed so far, keyed by phase.
+  // MUST stay above the early return below — hooks run unconditionally, and a
+  // live card can flip graph.phaseCount 0→>0 when its workflow scan lands.
+  const revealedByPhase = useMemo(() => {
+    const m = new Map<PhaseKey, Set<string>>();
+    for (const s of state.revealedSpawns) {
+      let set = m.get(s.phaseKey);
+      if (!set) m.set(s.phaseKey, (set = new Set()));
+      set.add(s.agentType);
+    }
+    return m;
+  }, [state.revealedSpawns]);
 
   if (graph.phaseCount === 0) return null;
 
@@ -122,16 +131,6 @@ export const SessionWorkflowMap = memo(function SessionWorkflowMap({
   const isRevealed = (key: PhaseKey) => !replaying || state.revealedPhaseKeys.has(key);
   const isActive = (key: PhaseKey, staticActive: boolean) =>
     replaying ? state.activePhase === key : staticActive;
-  // subagents shown in replay = only those revealed so far, by phase
-  const revealedByPhase = useMemo(() => {
-    const m = new Map<PhaseKey, Set<string>>();
-    for (const s of state.revealedSpawns) {
-      let set = m.get(s.phaseKey);
-      if (!set) m.set(s.phaseKey, (set = new Set()));
-      set.add(s.agentType);
-    }
-    return m;
-  }, [state.revealedSpawns]);
 
   return (
     <div className="workflow-map">
