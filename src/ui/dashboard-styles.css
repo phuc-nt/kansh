@@ -392,8 +392,9 @@ body {
 
 /* --- workflow map (v0.7): phase graph per card --- */
 .workflow-map { border-top: 1px solid var(--border); }
+.workflow-header { display: flex; align-items: center; }
 .workflow-toggle {
-  width: 100%;
+  flex: 1;
   text-align: left;
   background: transparent;
   border: none;
@@ -403,6 +404,55 @@ body {
   cursor: pointer;
 }
 .workflow-toggle:hover { color: var(--text); }
+.workflow-replay-enter {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--running);
+  font-size: 10px;
+  padding: 1px 8px;
+  margin-right: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.workflow-replay-enter:hover { border-color: var(--running); }
+
+/* --- workflow replay (v0.8): transport + reveal animation --- */
+.workflow-replay { padding: 4px 10px 6px; border-bottom: 1px solid var(--border); }
+.replay-task-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.replay-task-label {
+  flex: 1;
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.replay-transport { display: flex; align-items: center; gap: 6px; }
+.replay-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 6px;
+  min-width: 22px;
+  height: 20px;
+  cursor: pointer;
+}
+.replay-btn:hover:not(:disabled) { border-color: var(--running); }
+.replay-btn:disabled { opacity: 0.35; cursor: default; }
+.replay-play { color: var(--running); }
+.replay-speed { min-width: 30px; }
+.replay-exit { color: var(--text-dim); border: none; }
+.replay-scrub { flex: 1; height: 4px; accent-color: var(--running); cursor: pointer; }
+.replay-clock { font-size: 9px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* reveal states while replaying */
+.workflow-phase-list.replaying .workflow-phase { transition: opacity 0.2s ease; }
+.workflow-phase.dim { opacity: 0.22; }
+.workflow-phase-list.replaying .workflow-agent-chip { animation: chip-fade 0.35s ease; }
+@keyframes chip-fade { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
 .workflow-phase-list {
   list-style: none;
   margin: 0;
