@@ -31,6 +31,10 @@ Requires [Bun](https://bun.sh) ≥ 1.3 and [Claude Code](https://claude.com/clau
 
 <sub>Timeline view — every session as a swimlane on one shared clock, with prompt/error/blocked markers, waiting stretches, and an attention ribbon.</sub>
 
+![kansh workflow replay](docs/images/replay.png)
+
+<sub>Workflow replay — pick a task and watch its phases reveal over time; the current phase pulses while later ones stay dimmed until reached.</sub>
+
 ## Documentation
 
 - 📖 **[Installation & Usage](docs/installation-and-usage.md)** — full setup, every feature, configuration, troubleshooting.
