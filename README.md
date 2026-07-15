@@ -1,5 +1,10 @@
 # kansh
 
+[![version](https://img.shields.io/github/package-json/v/phuc-nt/kansh)](https://github.com/phuc-nt/kansh/releases)
+[![license](https://img.shields.io/github/license/phuc-nt/kansh)](LICENSE)
+[![runtime: Bun](https://img.shields.io/badge/runtime-Bun%20%E2%89%A5%201.3-black)](https://bun.sh)
+[![platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)](#quick-start)
+
 **A local, read-only dashboard for your Claude Code sessions.**
 
 Run many Claude Code sessions at once? kansh auto-detects every one on your machine and shows them on a single screen — live — so you stop switching windows to check what each agent is doing.
@@ -39,6 +44,11 @@ Requires [Bun](https://bun.sh) ≥ 1.3 and [Claude Code](https://claude.com/clau
 
 - 📖 **[Installation & Usage](docs/installation-and-usage.md)** — full setup, every feature, configuration, troubleshooting.
 - 🏗 **[System Architecture](docs/system-architecture.md)** — how the tailer, parser, liveness, and views fit together.
+- 📝 **[Changelog](CHANGELOG.md)** — what changed in each release.
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The core promise is that kansh stays **local, read-only, and offline**; please keep it that way.
 
 ## License
 

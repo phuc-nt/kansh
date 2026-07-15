@@ -3,9 +3,29 @@
   "version": "0.8.0",
   "description": "Local read-only monitor for Claude Code sessions \u2014 live git-graph timeline of agents, sub-agents, and tool calls",
   "license": "MIT",
+  "author": "phuc-nt",
+  "homepage": "https://github.com/phuc-nt/kansh#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/phuc-nt/kansh"
+    "url": "git+https://github.com/phuc-nt/kansh.git"
+  },
+  "bugs": {
+    "url": "https://github.com/phuc-nt/kansh/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "monitor",
+    "dashboard",
+    "observability",
+    "agent",
+    "workflow",
+    "timeline",
+    "local",
+    "bun"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
   },
   "type": "module",
   "scripts": {
