@@ -392,7 +392,7 @@ export class SessionStateStore {
       // workflow: full skill sequence (bounded at 500) so a mid-sequence reorder
       // with unchanged counts still broadcasts; spawn count covers the tie layer
       state.workflow
-        ? `${state.workflow.phases.map((p) => p.skill).join('>')}:${state.workflow.spawns.length}`
+        ? `${state.workflow.phases.map((p) => p.skill).join('>')}:${state.workflow.spawns.length}:${state.workflow.tasks?.length ?? 0}`
         : '',
     ].join('\u0000');
     if (key === state.lastSemanticsKey) return;

@@ -11,54 +11,112 @@ import { createReadStream } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { WorkflowTimeline } from '../shared/normalized-event-types';
+import type { WorkflowTask, WorkflowTimeline } from '../shared/normalized-event-types';
 
 /** Cap the phase sequence so a pathological session can't grow it unbounded. */
 const MAX_PHASES = 500;
 /** Cap subagent spawns tracked for the tie-in. */
 const MAX_SPAWNS = 1000;
+/** Cap replay tasks; keep the newest when a session has more. */
+const MAX_TASKS = 200;
+const LABEL_MAX = 90;
+
+/** Slash-command plumbing / interrupt markers that aren't real user prompts. */
+const NOISE_TEXT_RE =
+  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)|\[Request interrupted)/;
 
 interface RawRecord {
   type?: string;
   isSidechain?: boolean;
   attributionSkill?: string;
   timestamp?: string;
-  message?: { content?: unknown };
+  message?: { role?: string; content?: unknown };
+}
+
+function truncate(text: string): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  return oneLine.length > LABEL_MAX ? oneLine.slice(0, LABEL_MAX) + '…' : oneLine;
+}
+
+/** Extract a real user text prompt from a user record's content, or undefined. */
+function userPromptText(content: unknown): string | undefined {
+  if (typeof content === 'string') {
+    const t = content.trim();
+    return t && !NOISE_TEXT_RE.test(t) ? t : undefined;
+  }
+  if (Array.isArray(content)) {
+    let text = '';
+    for (const block of content) {
+      if (block && typeof block === 'object' && (block as { type?: string }).type === 'text') {
+        const bt = (block as { text?: unknown }).text;
+        if (typeof bt === 'string') text += bt;
+      }
+    }
+    const t = text.trim();
+    return t && !NOISE_TEXT_RE.test(t) ? t : undefined;
+  }
+  return undefined;
 }
 
 /**
- * Scan a main transcript for the main-lane phase transition sequence.
- * Consecutive identical skills are collapsed here already (the sequence only
- * records changes), keeping the payload small.
+ * One streaming pass over the main transcript: the phase transition sequence
+ * (assistant records carrying attributionSkill, consecutive repeats collapsed)
+ * AND the task boundaries (real main-lane user prompts). Both are cheap because
+ * a substring prefilter skips lines that carry neither marker before JSON.parse.
  */
-async function scanPhases(transcriptPath: string): Promise<WorkflowTimeline['phases']> {
+async function scanPhasesAndTasks(
+  transcriptPath: string,
+): Promise<{ phases: WorkflowTimeline['phases']; tasks: WorkflowTask[] }> {
   const phases: WorkflowTimeline['phases'] = [];
+  const promptStarts: { ts: string; label: string }[] = [];
   let last: string | undefined;
   const stream = createReadStream(transcriptPath, { encoding: 'utf8' });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
   try {
     for await (const line of rl) {
-      // prefilter: only assistant records carry attributionSkill
-      if (line.indexOf('attributionSkill') === -1) continue;
+      const hasSkill = line.indexOf('attributionSkill') !== -1;
+      const maybeUser = line.indexOf('"user"') !== -1;
+      if (!hasSkill && !maybeUser) continue;
       let rec: RawRecord;
       try {
         rec = JSON.parse(line) as RawRecord;
       } catch {
         continue;
       }
-      if (rec.type !== 'assistant' || rec.isSidechain === true) continue;
-      const skill = rec.attributionSkill;
-      if (typeof skill !== 'string' || !skill) continue;
-      if (skill === last) continue; // collapse consecutive repeats
-      phases.push({ skill, ts: typeof rec.timestamp === 'string' ? rec.timestamp : '' });
-      last = skill;
-      if (phases.length >= MAX_PHASES) break;
+      if (rec.isSidechain === true) continue;
+
+      if (rec.type === 'assistant' && hasSkill) {
+        const skill = rec.attributionSkill;
+        if (typeof skill === 'string' && skill && skill !== last) {
+          phases.push({ skill, ts: typeof rec.timestamp === 'string' ? rec.timestamp : '' });
+          last = skill;
+        }
+      } else if (rec.type === 'user' && promptStarts.length < MAX_TASKS * 4) {
+        const prompt = userPromptText(rec.message?.content);
+        if (prompt && typeof rec.timestamp === 'string') {
+          promptStarts.push({ ts: rec.timestamp, label: truncate(prompt) });
+        }
+      }
+      if (phases.length >= MAX_PHASES && promptStarts.length >= MAX_TASKS) break;
     }
   } finally {
     rl.close();
     stream.close();
   }
-  return phases;
+
+  // chain each prompt to the next as its task window; last task closes at the
+  // latest ts we observed (a phase or the prompt itself)
+  const tipTs =
+    phases.length > 0 && phases[phases.length - 1].ts > (promptStarts.at(-1)?.ts ?? '')
+      ? phases[phases.length - 1].ts
+      : (promptStarts.at(-1)?.ts ?? '');
+  const trimmed = promptStarts.slice(-MAX_TASKS);
+  const tasks: WorkflowTask[] = trimmed.map((p, i) => ({
+    startTs: p.ts,
+    endTs: i + 1 < trimmed.length ? trimmed[i + 1].ts : tipTs > p.ts ? tipTs : p.ts,
+    label: p.label,
+  }));
+  return { phases, tasks };
 }
 
 /**
@@ -109,15 +167,15 @@ async function scanSpawns(subagentsDir: string): Promise<WorkflowTimeline['spawn
   return spawns;
 }
 
-/** Build a compact whole-session workflow timeline (phases + spawns). */
+/** Build a compact whole-session workflow timeline (phases + spawns + tasks). */
 export async function scanWorkflowTimeline(
   transcriptPath: string,
   subagentsDir: string,
 ): Promise<WorkflowTimeline | undefined> {
-  const [phases, spawns] = await Promise.all([
-    scanPhases(transcriptPath),
+  const [{ phases, tasks }, spawns] = await Promise.all([
+    scanPhasesAndTasks(transcriptPath),
     scanSpawns(subagentsDir),
   ]);
   if (phases.length === 0 && spawns.length === 0) return undefined;
-  return { phases, spawns };
+  return { phases, spawns, tasks: tasks.length > 0 ? tasks : undefined };
 }

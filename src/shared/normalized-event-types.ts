@@ -78,6 +78,18 @@ export interface WorkflowTimeline {
   phases: { skill: string; ts: string }[];
   /** subagent spawns: type + when, to tie each to the phase active at spawn */
   spawns: { agentType: string; ts: string; depth: number }[];
+  /** replay boundaries: one per real main-lane user prompt (a "task") */
+  tasks?: WorkflowTask[];
+}
+
+/** A replayable unit: the window between two consecutive user prompts. */
+export interface WorkflowTask {
+  /** ts of the prompt that starts this task */
+  startTs: string;
+  /** ts of the next prompt (or the timeline tip for the last task) */
+  endTs: string;
+  /** truncated prompt text, for the task selector */
+  label: string;
 }
 
 export interface TodoItem {
