@@ -21,9 +21,9 @@ const MAX_SPAWNS = 1000;
 const MAX_TASKS = 200;
 const LABEL_MAX = 90;
 
-/** Slash-command plumbing / interrupt markers that aren't real user prompts. */
+/** Slash-command plumbing / interrupt / caveat markers that aren't real user prompts. */
 const NOISE_TEXT_RE =
-  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)|\[Request interrupted)/;
+  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|system-reminder|user-prompt-submit-hook)|\[Request interrupted)/;
 
 interface RawRecord {
   type?: string;

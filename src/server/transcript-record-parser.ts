@@ -11,7 +11,7 @@ const LABEL_MAX = 120;
 
 /** Synthetic slash-command plumbing that would pollute the graph as fake user turns. */
 const NOISE_TEXT_RE =
-  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)|\[Request interrupted)/;
+  /^\s*(?:<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|system-reminder|user-prompt-submit-hook)|\[Request interrupted)/;
 
 export interface ParseContext {
   sessionId: string;

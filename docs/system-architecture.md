@@ -1,6 +1,12 @@
 # Kansh System Architecture
 
-Updated: 2026-07-14 (v0.7.0 — "Workflow Map" complete)
+Updated: 2026-07-15 (v0.8.0 — "Workflow Replay" complete)
+
+## v0.8 additions (workflow replay)
+
+- **Task boundaries** (scanner): the workflow scan's single streaming pass now also emits `tasks: {startTs, endTs, label}[]` — one per real main-lane user prompt (noise/`<...>` markers excluded via the same regex the parser uses; caveat/system-reminder variants added). `endTs` chains to the next prompt; the last task closes at the timeline tip. Capped 200 (newest kept). Rides `WorkflowTimeline.tasks?` (contract additive).
+- **Replay engine** (`src/ui/workflow-replay-engine.ts`, pure fixture-first): `buildReplaySteps(timeline, taskIndex)` filters phases+spawns into the task window as time-offset reveal steps plus a carry-in phase (the phase active at the window start); `replayStateAt(steps, playheadMs)` folds steps up to the playhead into `{activePhase, revealedPhaseKeys, revealedSpawns}`. No Date.now — deterministic.
+- **Replay UI** (`session-workflow-replay-controls.tsx` + workflow-map integration): a `⏵ replay` button enters replay mode; controls = task selector (`◂ N/M · label ▸`), play/pause, speed `1×/2×/4×/8×`, hand scrub (`mm:ss`). The vertical phase list renders by playhead — unreached phases dim, the current phase pulses, subagent chips fade in at their spawn offset. Entry auto-picks the most recent task WITH activity (the last task is often the still-open empty window). **The playhead advances on a setInterval, NOT rAF** — rAF never fires in a backgrounded/occluded tab (the monitor's default), so the interval is the source of truth (UAT asserts advance with `document.hidden` forced). Exit restores the static map.
 
 ## v0.7 additions (agentic workflow map)
 
